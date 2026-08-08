@@ -24,13 +24,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # enablement: true turns Pages on through the API on the first run.
-      # Without it the workflow fails with "Get Pages site failed" until
-      # somebody flips the setting by hand — a deploy that cannot deploy until
-      # a human reads the log is not much of a deploy.
+      # Pages has to be switched on once by hand, under
+      # Settings -> Pages -> Source: GitHub Actions. This step's `enablement`
+      # option looks like it would automate that, but creating a Pages site
+      # needs repository-admin rights and the workflow token has none, so it
+      # fails with "Resource not accessible by integration" — a less
+      # informative error than the one you get for simply not having enabled
+      # Pages. Left off deliberately.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       # There is no build step: the repository *is* the site. Only the files
       # the app needs at runtime are uploaded.
