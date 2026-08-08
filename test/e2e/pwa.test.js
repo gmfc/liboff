@@ -99,16 +99,41 @@ test('progressive web app', { skip: playwright ? false : SKIP_REASON }, async (t
     });
     assert.equal(await page.textContent('.card__title'), 'Read On A Plane');
 
-    // The banner is how the user learns lookups will not work right now.
-    // Waited for rather than sampled: Chromium can flip navigator.onLine a
-    // moment after the document starts, so an instant read is a coin toss.
+    await context.setOffline(false);
+    await context.close();
+  });
+
+  // The banner is checked separately, against the events the browser actually
+  // fires. `context.setOffline` blocks the network but does not reliably move
+  // `navigator.onLine` — it does in some Chromium builds and not in others —
+  // so asserting the banner off the back of it tests the automation, not us.
+  await t.test('the offline banner follows the browser connectivity state', async () => {
+    const { context, page } = await openApp(browser, server.origin);
+    assert.equal(
+      await page.evaluate(() => document.querySelector('.offline-banner').hidden),
+      true,
+      'hidden while online',
+    );
+
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false });
+      window.dispatchEvent(new Event('offline'));
+    });
     await page.waitForFunction(
       () => document.querySelector('.offline-banner')?.hidden === false,
       null,
-      { timeout: 10000 },
+      { timeout: 5000 },
     );
 
-    await context.setOffline(false);
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => true });
+      window.dispatchEvent(new Event('online'));
+    });
+    await page.waitForFunction(
+      () => document.querySelector('.offline-banner')?.hidden === true,
+      null,
+      { timeout: 5000 },
+    );
     await context.close();
   });
 
