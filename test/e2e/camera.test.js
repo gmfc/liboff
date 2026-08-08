@@ -68,11 +68,12 @@ async function stubLookup(page, isbn, data) {
   await page.route('**/googleapis.com/**', (route) => route.abort());
 }
 
-async function openWithCamera(browser, origin, code) {
+async function openWithCamera(browser, origin, code, contextOptions = {}) {
   const { modules } = encodeEan13(code);
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },
     permissions: ['camera'],
+    ...contextOptions,
   });
   await context.addInitScript(fakeCamera, { modules });
   const page = await context.newPage();
@@ -216,7 +217,13 @@ test('scan flow', { skip: playwright ? false : SKIP_REASON }, async (t) => {
   });
 
   await t.test('a decoder that will not load surfaces the error and still frees the camera', async () => {
-    const { context, page } = await openWithCamera(browser, server.origin, '9780140328721');
+    // Service workers are blocked for this one: page.route does not intercept
+    // requests the worker itself makes, so once it had claimed the page the
+    // abort below was bypassed and the decoder loaded anyway — a race decided
+    // by whether claiming won, which is not what this test is about.
+    const { context, page } = await openWithCamera(browser, server.origin, '9780140328721', {
+      serviceWorkers: 'block',
+    });
     await page.route('**/vendor/zbar-wasm/**', (route) => route.abort());
 
     const outcome = await page.evaluate(async () => {
