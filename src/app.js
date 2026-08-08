@@ -71,13 +71,15 @@ async function registerServiceWorker() {
 function renderOfflineBanner() {
   const banner = h(
     'div',
-    { class: 'offline-banner', hidden: true },
+    { class: 'offline-banner' },
     icon('offline', { size: 16 }),
     h('span', {}, 'Offline — your library still works; lookups will wait.'),
   );
-  store.subscribe(() => {
+  const sync = () => {
     banner.hidden = store.state.online;
-  });
+  };
+  sync(); // reflect the state we already have, rather than waiting for a change
+  store.subscribe(sync);
   return banner;
 }
 

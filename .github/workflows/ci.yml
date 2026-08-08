@@ -1,10 +1,17 @@
 name: CI
 
 on:
+  # Only the default branch on push: pull_request already covers every branch
+  # that has a PR open, and listening to both ran the whole suite twice per
+  # push.
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:

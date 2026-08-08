@@ -100,8 +100,13 @@ test('progressive web app', { skip: playwright ? false : SKIP_REASON }, async (t
     assert.equal(await page.textContent('.card__title'), 'Read On A Plane');
 
     // The banner is how the user learns lookups will not work right now.
-    const bannerHidden = await page.evaluate(() => document.querySelector('.offline-banner')?.hidden);
-    assert.equal(bannerHidden, false, 'the offline banner should be showing');
+    // Waited for rather than sampled: Chromium can flip navigator.onLine a
+    // moment after the document starts, so an instant read is a coin toss.
+    await page.waitForFunction(
+      () => document.querySelector('.offline-banner')?.hidden === false,
+      null,
+      { timeout: 10000 },
+    );
 
     await context.setOffline(false);
     await context.close();

@@ -184,7 +184,12 @@ export async function setPreference(key, value) {
 
 export function watchConnectivity() {
   if (typeof window === 'undefined') return;
-  const update = () => setState({ online: navigator.onLine });
+  const update = () => {
+    if (state.online !== navigator.onLine) setState({ online: navigator.onLine });
+  };
   window.addEventListener('online', update);
   window.addEventListener('offline', update);
+  // Re-read once now: `state.online` was sampled when this module was first
+  // evaluated, and an event fired between then and here would have been missed.
+  update();
 }
