@@ -11,10 +11,13 @@
  */
 
 const DB_NAME = 'liboff';
-const DB_VERSION = 1;
+// v2 added the collections store. Upgrades only ever add stores, so an
+// existing library survives untouched.
+const DB_VERSION = 2;
 const BOOKS = 'books';
 const COVERS = 'covers';
 const META = 'meta';
+const COLLECTIONS = 'collections';
 
 let dbPromise = null;
 let memoryFallback = null;
@@ -32,6 +35,9 @@ function openDatabase() {
       }
       if (!db.objectStoreNames.contains(COVERS)) db.createObjectStore(COVERS);
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META);
+      if (!db.objectStoreNames.contains(COLLECTIONS)) {
+        db.createObjectStore(COLLECTIONS, { keyPath: 'id' });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error('indexedDB open failed'));
@@ -41,7 +47,12 @@ function openDatabase() {
 
 function useMemoryFallback() {
   if (!memoryFallback) {
-    memoryFallback = { books: new Map(), covers: new Map(), meta: new Map() };
+    memoryFallback = {
+      books: new Map(),
+      covers: new Map(),
+      meta: new Map(),
+      collections: new Map(),
+    };
   }
   return memoryFallback;
 }
@@ -124,6 +135,52 @@ export async function replaceAllBooks(books) {
   await run(BOOKS, 'readwrite', (store) => {
     store.clear();
     for (const book of books) store.put(book);
+  });
+}
+
+/* ------------------------------------------------------------- collections */
+
+export async function loadCollections() {
+  const database = await db();
+  if (!database) return [...useMemoryFallback().collections.values()];
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(COLLECTIONS, 'readonly');
+    const request = tx.objectStore(COLLECTIONS).getAll();
+    request.onsuccess = () => resolve(request.result ?? []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function putCollection(collection) {
+  const database = await db();
+  if (!database) {
+    useMemoryFallback().collections.set(collection.id, collection);
+    return collection;
+  }
+  await run(COLLECTIONS, 'readwrite', (store) => store.put(collection));
+  return collection;
+}
+
+export async function deleteCollection(id) {
+  const database = await db();
+  if (!database) {
+    useMemoryFallback().collections.delete(id);
+    return;
+  }
+  await run(COLLECTIONS, 'readwrite', (store) => store.delete(id));
+}
+
+export async function replaceAllCollections(collections) {
+  const database = await db();
+  if (!database) {
+    const memory = useMemoryFallback();
+    memory.collections.clear();
+    for (const collection of collections) memory.collections.set(collection.id, collection);
+    return;
+  }
+  await run(COLLECTIONS, 'readwrite', (store) => {
+    store.clear();
+    for (const collection of collections) store.put(collection);
   });
 }
 

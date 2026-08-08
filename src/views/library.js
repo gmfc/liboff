@@ -9,10 +9,13 @@
 
 import { debounce, h, icon, mount } from '../ui/dom.js';
 import { bookCard } from '../ui/book-card.js';
+import { collectionIcon, filterPill, tagLabel } from '../ui/chips.js';
+import { findCollection } from '../lib/collections.js';
 import { SHELVES } from '../lib/model.js';
 import { SORTS, countsByShelf, selectBooks } from '../lib/query.js';
 import * as store from '../lib/store.js';
 import { showBookSheet } from './book-sheet.js';
+import { showFilterSheet } from './filter-sheet.js';
 import { navigate } from '../router.js';
 
 export function renderLibrary(container) {
@@ -42,6 +45,46 @@ export function renderLibrary(container) {
   const chipBar = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Shelves' });
   const grid = h('div', { class: 'grid', dataset: { testid: 'library-grid' } });
   const summary = h('p', { class: 'summary', 'aria-live': 'polite' });
+  const pills = h('div', { class: 'filter-pills' });
+
+  const filterButton = h(
+    'button',
+    {
+      type: 'button',
+      class: 'filter-btn',
+      'aria-label': 'Collections and tags',
+      dataset: { testid: 'open-filters' },
+      onClick: () => showFilterSheet(),
+    },
+    icon('filter', { size: 18 }),
+  );
+
+  /** Pills for the facets in play, each removable where it sits. */
+  function renderPills() {
+    const active = [];
+    const collection = findCollection(store.state.collections, store.state.collectionId);
+    if (collection) {
+      active.push(
+        filterPill({
+          kind: 'collection',
+          label: h('span', { class: 'filter-pill__label' }, collectionIcon(14), collection.name),
+          onRemove: () => store.setState({ collectionId: null }),
+        }),
+      );
+    }
+    if (store.state.tag) {
+      active.push(
+        filterPill({
+          kind: 'tag',
+          label: tagLabel(store.state.tag),
+          onRemove: () => store.setState({ tag: null }),
+        }),
+      );
+    }
+    mount(pills, ...active);
+    pills.hidden = active.length === 0;
+    filterButton.classList.toggle('is-on', active.length > 0);
+  }
 
   function renderChips() {
     const counts = countsByShelf(store.state.books);
@@ -102,6 +145,27 @@ export function renderLibrary(container) {
         ),
       );
     }
+    if (store.state.collectionId || store.state.tag) {
+      return h(
+        'div',
+        { class: 'empty' },
+        h('h2', { class: 'empty__title' }, 'Nothing here yet'),
+        h(
+          'p',
+          { class: 'empty__body' },
+          'No book matches this combination. Collections are filled from a book’s own page.',
+        ),
+        h(
+          'button',
+          {
+            type: 'button',
+            class: 'btn btn--ghost',
+            onClick: () => store.setState({ collectionId: null, tag: null, shelf: 'all' }),
+          },
+          'Clear filters',
+        ),
+      );
+    }
     return h(
       'div',
       { class: 'empty' },
@@ -111,10 +175,14 @@ export function renderLibrary(container) {
   }
 
   function renderGrid() {
+    const collection = findCollection(store.state.collections, store.state.collectionId);
     const books = selectBooks(store.state.books, {
       shelf: store.state.shelf,
       search: store.state.search,
       sort: store.state.sort,
+      tag: store.state.tag,
+      // A collection filters by membership; the sort still applies within it.
+      ids: collection ? new Set(collection.bookIds) : null,
     });
 
     summary.textContent = books.length
@@ -144,6 +212,7 @@ export function renderLibrary(container) {
       searchInput.value = store.state.search;
     }
     renderChips();
+    renderPills();
     renderGrid();
   }
 
@@ -155,13 +224,26 @@ export function renderLibrary(container) {
       h(
         'div',
         { class: 'library__controls' },
+        // The filter button sits by the search box rather than in the chip
+        // row: three controls in that row left the shelf names clipped.
         h(
           'div',
-          { class: 'search' },
-          icon('search', { size: 18, className: 'search__icon' }),
-          searchInput,
+          { class: 'search-row' },
+          h(
+            'div',
+            { class: 'search' },
+            icon('search', { size: 18, className: 'search__icon' }),
+            searchInput,
+          ),
+          filterButton,
         ),
-        h('div', { class: 'library__filters' }, chipBar, h('div', { class: 'select-wrap' }, sortSelect)),
+        h(
+          'div',
+          { class: 'library__filters' },
+          chipBar,
+          h('div', { class: 'select-wrap' }, sortSelect),
+        ),
+        pills,
       ),
       summary,
       grid,

@@ -9,13 +9,68 @@
 import { h, icon, formatDate, mount } from '../ui/dom.js';
 import { ratingInput, ratingClearButton } from '../ui/rating.js';
 import { coverElement } from '../ui/book-card.js';
+import { tagEditor } from '../ui/tag-editor.js';
+import { toggleChip } from '../ui/chips.js';
 import { confirmDialog, toast } from '../ui/toast.js';
+import { isInCollection, sortCollections } from '../lib/collections.js';
 import { SHELVES, authorText } from '../lib/model.js';
 import { formatIsbn } from '../lib/isbn.js';
 import { shareText } from '../lib/transfer.js';
 import * as store from '../lib/store.js';
 
 let openSheet = null;
+
+/** Ask for a collection name. Resolves to null if the user backs out. */
+function promptForName() {
+  return new Promise((resolve) => {
+    const input = h('input', {
+      class: 'input',
+      placeholder: 'Collection name',
+      'aria-label': 'Collection name',
+      dataset: { testid: 'collection-name' },
+    });
+    const dialog = h(
+      'div',
+      { class: 'dialog-backdrop', onClick: (event) => event.target === dialog && close(null) },
+      h(
+        'form',
+        {
+          class: 'dialog',
+          role: 'dialog',
+          'aria-modal': 'true',
+          'aria-label': 'New collection',
+          onSubmit: (event) => {
+            event.preventDefault();
+            close(input.value.trim() || null);
+          },
+        },
+        h('h2', { class: 'dialog__title' }, 'New collection'),
+        input,
+        h(
+          'div',
+          { class: 'dialog__actions' },
+          h('button', { type: 'button', class: 'btn btn--ghost', onClick: () => close(null) }, 'Cancel'),
+          h(
+            'button',
+            { type: 'submit', class: 'btn btn--primary', dataset: { testid: 'collection-save' } },
+            'Create',
+          ),
+        ),
+      ),
+    );
+    function onKey(event) {
+      if (event.key === 'Escape') close(null);
+    }
+    function close(result) {
+      document.removeEventListener('keydown', onKey);
+      dialog.remove();
+      resolve(result);
+    }
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(dialog);
+    input.focus();
+  });
+}
 
 export function closeBookSheet() {
   openSheet?.close();
@@ -143,6 +198,52 @@ export function showBookSheet(book, options = {}) {
         ),
       ),
 
+      h(
+        'section',
+        { class: 'sheet__section' },
+        h('h3', { class: 'sheet__label' }, 'Collections'),
+        h(
+          'div',
+          { class: 'chip-wrap' },
+          ...sortCollections(store.state.collections).map((collection) =>
+            toggleChip({
+              label: collection.name,
+              on: isInCollection(collection, current.id),
+              testid: 'collection-toggle',
+              onToggle: async () => {
+                await store.toggleBookInCollection(collection.id, current.id);
+                render();
+              },
+            }),
+          ),
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'toggle-chip toggle-chip--add',
+              dataset: { testid: 'add-collection' },
+              onClick: async () => {
+                const name = await promptForName();
+                if (!name) return;
+                // Created with this book already in it: you opened the book,
+                // so putting it in the collection is the whole intent.
+                await store.createCollection(name, [current.id]);
+                render();
+                toast(`Added to “${name}”`);
+              },
+            },
+            '+ New',
+          ),
+        ),
+      ),
+
+      h(
+        'section',
+        { class: 'sheet__section' },
+        h('h3', { class: 'sheet__label' }, 'Tags'),
+        tagEditor(current, store.state.books, (tags) => patch({ tags })),
+      ),
+
       (current.startedAt || current.finishedAt) &&
         h(
           'section',
@@ -250,14 +351,6 @@ export function showBookSheet(book, options = {}) {
     });
     fields.authors = authors;
 
-    const tags = h('input', {
-      class: 'input',
-      id: 'field-tags',
-      value: (current.tags ?? []).join(', '),
-      placeholder: 'sci-fi, borrowed, signed',
-    });
-    fields.tags = tags;
-
     return h(
       'form',
       {
@@ -274,7 +367,6 @@ export function showBookSheet(book, options = {}) {
             startedAt: fields.startedAt.value,
             finishedAt: fields.finishedAt.value,
             notes: notes.value,
-            tags: tags.value,
           });
           editing = false;
           render();
@@ -298,7 +390,6 @@ export function showBookSheet(book, options = {}) {
         field('startedAt', 'Started', { type: 'date' }),
         field('finishedAt', 'Finished', { type: 'date' }),
       ),
-      h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Tags'), tags),
       h('label', { class: 'field' }, h('span', { class: 'field__label' }, 'Notes'), notes),
       h(
         'div',

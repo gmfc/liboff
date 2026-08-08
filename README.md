@@ -22,8 +22,13 @@ build step and no dependencies.
   verdicts, and a bomb sorts below zero.
 - **Shelve** books as Want to read → Reading → Read, or Abandoned. Start and
   finish dates fill themselves in.
-- **Find** anything by title, author, tag or note, filter by shelf, and sort by
-  rating, title, author or date.
+- **Tag** freely — sci-fi, borrowed, signed — with the tags you already use
+  offered as you type, so a library does not end up with "scifi" and "sci-fi"
+  both meaning the same thing.
+- **Collect** books into groups you name yourself: a book club, a series, the
+  ones you keep lending out. A book can be in as many as you like.
+- **Find** anything by title, author, tag, note, year or ISBN; filter by shelf,
+  collection and tag together; sort by rating, title, author or date.
 - **See** where your taste actually sits: rating distribution, average, pages
   read, and your ranked best.
 - **Works offline.** The library, the covers and the barcode decoder are all on
@@ -59,7 +64,8 @@ assets/app.css        one stylesheet, mobile-first, light and dark
 src/
   app.js              bootstrap: store, router, tab bar, service worker
   router.js           hash routing (works from any static subpath)
-  lib/                isbn, model, query, transfer, db, metadata, store
+  lib/                isbn, model, collections, tags, query, transfer, db,
+                      metadata, store
   scanner/            decode (BarcodeDetector or wasm) + camera loop
   ui/                 dom helpers, rating control, cards, toasts
   views/              library, scan, stats, settings, book sheet
@@ -69,6 +75,20 @@ vendor/zbar-wasm/     barcode decoder, unmodified upstream (see Licence)
 **Storage.** Books live in IndexedDB, and covers are stored beside them as
 blobs so a shelf still looks like a shelf on a plane. The whole library is held
 in memory and written through, so no render ever waits on the database.
+
+**Shelves, tags and collections** are three different things on purpose:
+
+| | what it is | how many per book | what happens when it empties |
+|---|---|---|---|
+| Shelf | where the book is in your reading | exactly one | — |
+| Tag | a free-form label | any number | the tag ceases to exist |
+| Collection | a group you assembled and named | any number | the collection remains, empty |
+
+That last column is the whole distinction. A tag is derived from the books
+carrying it, so it is counted on demand and never stored. A collection is a
+record of its own, because an empty collection you just made is a real thing,
+and the order you put books in is yours to choose — so membership lives on the
+collection as an ordered list, not on the book as a set of names.
 
 **Updates.** The shell is precached so the app opens offline, then revalidated
 in the background, so a redeployed file reaches an installed app on the visit
@@ -91,9 +111,13 @@ ISBN is kept either way.
 
 It never leaves the device except as an ISBN sent to a lookup service. That
 also means nothing is backing it up for you, so **More → Export** writes a JSON
-file that imports back exactly. Re-importing is safe: books are matched on
-ISBN, then id, then title and author, and the more recently edited copy of a
-book wins. There is a CSV export too, for spreadsheets.
+file that imports back exactly — books, tags and collections. Re-importing is
+safe: books are matched on ISBN, then id, then title and author, and the more
+recently edited copy of a book wins. Collections match on id then name, and
+merge as a union, since a book in either copy was put there deliberately.
+Membership is rewritten onto local ids on the way in, so a restored collection
+points at the books that are actually in the library. There is a CSV export
+too, for spreadsheets.
 
 ## Development
 
@@ -105,9 +129,10 @@ npm run test:e2e   # browser tests — needs Playwright, see below
 npm run icons      # regenerate the PNG icons from scripts/generate-icons.mjs
 ```
 
-The browser tests drive a real Chromium: they add and rate books, reload to
-prove persistence, cut the network to prove the offline claim, redeploy a file
-to prove updates land, and decode synthesised EAN-13 barcodes through the same
+The browser tests drive a real Chromium: they add, rate, tag and collect books,
+reload to prove persistence, upgrade a v1 database to prove nobody's existing
+library is lost, cut the network to prove the offline claim, redeploy a file to
+prove updates land, and decode synthesised EAN-13 barcodes through the same
 wasm path iOS uses. Playwright is not a dependency of the project, so install
 it when you want to run them:
 

@@ -5,11 +5,13 @@ import { makeBook } from '../../src/lib/model.js';
 import {
   exportCsv,
   exportJson,
+  mergeCollections,
   mergeImport,
   parseImportFile,
   shareText,
   EXPORT_VERSION,
 } from '../../src/lib/transfer.js';
+import { makeCollection } from '../../src/lib/collections.js';
 
 const book = (overrides) => makeBook({ title: 'A Book', authors: ['Someone'], ...overrides });
 
@@ -113,4 +115,111 @@ test('shareText reads as a sentence', () => {
     'Solaris — by Lem — 5/5',
   );
   assert.equal(shareText(book({ title: 'Bad', authors: [], bomb: true })), 'Bad — Bomb');
+});
+
+
+/* ------------------------------------------------------------- collections */
+
+test('collections survive a JSON round trip with their membership intact', () => {
+  const books = [book({ title: 'One' }), book({ title: 'Two' })];
+  const collections = [makeCollection({ name: 'Book club', bookIds: [books[0].id] })];
+
+  const payload = parseImportFile(exportJson(books, collections));
+  assert.equal(payload.version, EXPORT_VERSION);
+
+  const merged = mergeImport([], payload);
+  assert.equal(merged.collections.length, 1);
+  assert.equal(merged.collections[0].name, 'Book club');
+  assert.deepEqual(merged.collections[0].bookIds, [books[0].id]);
+});
+
+test('a v1 export with no collections still imports', () => {
+  const merged = mergeImport([], { format: 'liboff-library', version: 1, books: [book({})] });
+  assert.equal(merged.books.length, 1);
+  assert.deepEqual(merged.collections, []);
+});
+
+test('membership is remapped onto local ids when a book already exists', () => {
+  // The same book, catalogued on both devices under different ids: the local
+  // copy keeps its id, so the imported collection has to be rewritten or it
+  // would point at a book that is not in the library.
+  const mine = book({ title: 'Shared', isbn: '9780140328721' });
+  const theirs = { ...book({ title: 'Shared', isbn: '9780140328721' }), id: 'their-id' };
+  theirs.updatedAt = '2030-01-01T00:00:00.000Z';
+
+  const merged = mergeImport([mine], {
+    books: [theirs],
+    collections: [makeCollection({ name: 'Theirs', bookIds: ['their-id'] })],
+  });
+
+  assert.equal(merged.books.length, 1, 'still one book');
+  assert.deepEqual(
+    merged.collections[0].bookIds,
+    [mine.id],
+    'the collection points at the book that is actually in the library',
+  );
+});
+
+test('an imported collection drops ids for books that did not come with it', () => {
+  const merged = mergeImport([], {
+    books: [],
+    collections: [makeCollection({ name: 'Dangling', bookIds: ['missing'] })],
+  });
+  assert.deepEqual(merged.collections[0].bookIds, [], 'no ghosts left counting');
+});
+
+test('collections with the same name merge rather than doubling up', () => {
+  const mine = book({ title: 'Mine' });
+  const theirs = book({ title: 'Theirs' });
+  const existing = [makeCollection({ name: 'Book club', bookIds: [mine.id] })];
+
+  const merged = mergeImport([mine], {
+    books: [theirs],
+    collections: [makeCollection({ name: 'book club', bookIds: [theirs.id] })],
+  }, { collections: existing });
+
+  assert.equal(merged.collections.length, 1, 'matched on name, case-insensitively');
+  assert.deepEqual(merged.collections[0].bookIds, [mine.id, theirs.id], 'union of both');
+  assert.equal(merged.collectionsUpdated, 1);
+});
+
+test('merging collections is a union, so a book in either copy is kept', () => {
+  const idMap = new Map([['a', 'a'], ['b', 'b']]);
+  const existing = [makeCollection({ id: 'c1', name: 'x', bookIds: ['a'] })];
+  const result = mergeCollections(existing, [makeCollection({ id: 'c1', name: 'x', bookIds: ['b'] })], idMap);
+  assert.deepEqual(result.collections[0].bookIds, ['a', 'b']);
+});
+
+test('re-importing the same file twice adds nothing the second time', () => {
+  const books = [book({ title: 'One', isbn: '9780140328721' })];
+  const collections = [makeCollection({ name: 'Club', bookIds: [books[0].id] })];
+  const payload = parseImportFile(exportJson(books, collections));
+
+  const first = mergeImport([], payload);
+  const second = mergeImport(first.books, payload, { collections: first.collections });
+  assert.equal(second.books.length, 1);
+  assert.equal(second.collections.length, 1);
+  assert.equal(second.collectionsAdded, 0);
+  assert.equal(second.collectionsUpdated, 0);
+});
+
+test('replace mode takes the imported collections wholesale', () => {
+  const merged = mergeImport([book({ title: 'Old' })], {
+    books: [book({ title: 'New' })],
+    collections: [makeCollection({ name: 'Fresh' })],
+  }, { replace: true, collections: [makeCollection({ name: 'Stale' })] });
+  assert.deepEqual(merged.collections.map((c) => c.name), ['Fresh']);
+});
+
+test('CSV names the collections each book belongs to', () => {
+  const one = book({ title: 'One' });
+  const two = book({ title: 'Two' });
+  const csv = exportCsv([one, two], [
+    makeCollection({ name: 'Book club', bookIds: [one.id] }),
+    makeCollection({ name: 'Signed', bookIds: [one.id, two.id] }),
+  ]);
+  const [header, ...rows] = csv.trim().split('\r\n');
+  assert.ok(header.includes('collections'));
+  assert.ok(rows[0].includes('Book club; Signed'));
+  assert.ok(rows[1].includes('Signed'));
 });

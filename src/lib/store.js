@@ -8,6 +8,16 @@
  */
 
 import * as db from './db.js';
+import {
+  addToCollection,
+  makeCollection,
+  pruneCollections,
+  removeFromCollection,
+  renameCollection,
+  sortCollections,
+  toggleInCollection,
+} from './collections.js';
+import { removeTagFromBooks, renameTagInBooks } from './tags.js';
 import { applyShelfSideEffects, makeBook, updateBook } from './model.js';
 import { DEFAULT_SORT } from './query.js';
 import { toIsbn13 } from './isbn.js';
@@ -18,7 +28,11 @@ const listeners = new Set();
 export const state = {
   ready: false,
   books: [],
+  collections: [],
   shelf: 'all',
+  /** Active facet filters. Both combine with the shelf and the search. */
+  collectionId: null,
+  tag: null,
   search: '',
   sort: DEFAULT_SORT,
   view: 'library',
@@ -44,13 +58,15 @@ export function setState(patch) {
 }
 
 export async function init() {
-  const [books, sort, shelf, theme] = await Promise.all([
+  const [books, collections, sort, shelf, theme] = await Promise.all([
     db.loadBooks(),
+    db.loadCollections(),
     db.getSetting('sort', DEFAULT_SORT),
     db.getSetting('shelf', 'all'),
     db.getSetting('theme', 'system'),
   ]);
   state.books = books.map((book) => makeBookSafe(book));
+  state.collections = sortCollections(collections.map((entry) => makeCollectionSafe(entry)));
   state.sort = sort;
   state.shelf = shelf;
   state.theme = theme;
@@ -66,6 +82,14 @@ function makeBookSafe(raw) {
     return makeBook(raw);
   } catch {
     return makeBook({ title: raw?.title ?? 'Unreadable record' });
+  }
+}
+
+function makeCollectionSafe(raw) {
+  try {
+    return makeCollection(raw);
+  } catch {
+    return makeCollection({ name: 'Unreadable collection' });
   }
 }
 
@@ -129,6 +153,7 @@ export async function editBook(id, patch) {
 export async function removeBook(id) {
   const book = findById(id);
   state.books = state.books.filter((entry) => entry.id !== id);
+  await pruneCollectionsFor(state.books);
   notify();
   await db.deleteBook(id);
   // Only drop the cached cover when no other copy of the book still needs it.
@@ -141,19 +166,133 @@ export async function removeBook(id) {
   return book;
 }
 
-export async function replaceLibrary(books) {
+export async function replaceLibrary(books, collections = null) {
   state.books = books.map((book) => makeBookSafe(book));
+  if (collections) {
+    state.collections = sortCollections(collections.map((entry) => makeCollectionSafe(entry)));
+  }
+  state.collections = pruneCollections(state.collections, state.books);
   notify();
   await db.replaceAllBooks(state.books);
+  await db.replaceAllCollections(state.collections);
   hydrateCovers();
+}
+
+/* ------------------------------------------------------------- collections */
+
+async function persistCollection(collection) {
+  try {
+    await db.putCollection(collection);
+  } catch (error) {
+    console.warn('liboff: could not save collection —', error);
+  }
+}
+
+function replaceCollection(next) {
+  state.collections = sortCollections(
+    state.collections.map((entry) => (entry.id === next.id ? next : entry)),
+  );
+  notify();
+  return persistCollection(next).then(() => next);
+}
+
+export async function createCollection(name, bookIds = []) {
+  const collection = makeCollection({ name, bookIds });
+  state.collections = sortCollections([collection, ...state.collections]);
+  notify();
+  await persistCollection(collection);
+  return collection;
+}
+
+export async function editCollectionName(id, name) {
+  const current = findCollectionById(id);
+  if (!current) return null;
+  const next = renameCollection(current, name);
+  if (next === current) return current;
+  return replaceCollection(next);
+}
+
+export async function addBookToCollection(id, bookId) {
+  const current = findCollectionById(id);
+  if (!current) return null;
+  return replaceCollection(addToCollection(current, bookId));
+}
+
+export async function removeBookFromCollection(id, bookId) {
+  const current = findCollectionById(id);
+  if (!current) return null;
+  return replaceCollection(removeFromCollection(current, bookId));
+}
+
+export async function toggleBookInCollection(id, bookId) {
+  const current = findCollectionById(id);
+  if (!current) return null;
+  return replaceCollection(toggleInCollection(current, bookId));
+}
+
+export async function removeCollection(id) {
+  const removed = findCollectionById(id);
+  state.collections = state.collections.filter((entry) => entry.id !== id);
+  // Deleting the collection you are looking at should not leave the library
+  // filtered by something that no longer exists.
+  if (state.collectionId === id) state.collectionId = null;
+  notify();
+  await db.deleteCollection(id);
+  return removed;
+}
+
+export function findCollectionById(id) {
+  return state.collections.find((collection) => collection.id === id) ?? null;
+}
+
+async function pruneCollectionsFor(books) {
+  const pruned = pruneCollections(state.collections, books);
+  const changed = pruned.filter((collection, index) => collection !== state.collections[index]);
+  if (!changed.length) return;
+  state.collections = pruned;
+  await Promise.all(changed.map(persistCollection));
+}
+
+/* -------------------------------------------------------------------- tags */
+
+/** Rename a tag across the whole library, writing only the books that moved. */
+export async function renameTag(from, to) {
+  const changed = renameTagInBooks(state.books, from, to);
+  return applyTagChanges(changed);
+}
+
+export async function deleteTag(tag) {
+  const changed = removeTagFromBooks(state.books, tag);
+  const count = await applyTagChanges(changed);
+  if (state.tag && state.tag.toLowerCase() === String(tag).toLowerCase()) state.tag = null;
+  notify();
+  return count;
+}
+
+async function applyTagChanges(changed) {
+  if (!changed.length) return 0;
+  const byId = new Map(changed.map((book) => [book.id, book]));
+  state.books = state.books.map((book) => {
+    const next = byId.get(book.id);
+    return next ? updateBook(book, { tags: next.tags }) : book;
+  });
+  notify();
+  await Promise.all(
+    state.books.filter((book) => byId.has(book.id)).map((book) => persist(book)),
+  );
+  return changed.length;
 }
 
 export async function clearLibrary() {
   for (const url of coverUrls.values()) URL.revokeObjectURL(url);
   coverUrls.clear();
   state.books = [];
+  state.collections = [];
+  state.collectionId = null;
+  state.tag = null;
   notify();
   await db.replaceAllBooks([]);
+  await db.replaceAllCollections([]);
   await db.clearCovers();
 }
 

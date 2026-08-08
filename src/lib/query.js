@@ -4,6 +4,7 @@
  */
 
 import { authorText, isRated, rankValue, MAX_STARS } from './model.js';
+import { bookHasTag } from './tags.js';
 
 export const SORTS = [
   { id: 'added-desc', label: 'Recently added' },
@@ -122,13 +123,19 @@ export function sortBooks(books, sortId = DEFAULT_SORT) {
 
 /**
  * @param {object[]} books
- * @param {{shelf?: string, search?: string, sort?: string, rated?: boolean}} options
- *        `shelf` of 'all' (or omitted) keeps every shelf.
+ * @param {{shelf?: string, search?: string, sort?: string, rated?: boolean,
+ *          tag?: string|null, ids?: Set<string>|null}} options
+ *        `shelf` of 'all' (or omitted) keeps every shelf. `ids` restricts the
+ *        result to a set of book ids — how a collection filters, kept as a
+ *        plain set so this module needs to know nothing about collections.
+ *        Every filter combines: they narrow, they do not replace each other.
  */
 export function selectBooks(books, options = {}) {
-  const { shelf = 'all', search = '', sort = DEFAULT_SORT, rated } = options;
+  const { shelf = 'all', search = '', sort = DEFAULT_SORT, rated, tag = null, ids = null } = options;
   let result = books;
   if (shelf && shelf !== 'all') result = result.filter((book) => book.shelf === shelf);
+  if (ids) result = result.filter((book) => ids.has(book.id));
+  if (tag) result = result.filter((book) => bookHasTag(book, tag));
   if (rated === true) result = result.filter(isRated);
   if (search) result = result.filter((book) => matchesSearch(book, search));
   return sortBooks(result, sort);

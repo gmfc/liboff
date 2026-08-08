@@ -84,6 +84,7 @@ const ICON_PATHS = {
   stats: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
   search: 'M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16zM21 21l-4.35-4.35',
+  filter: 'M4 6h16M7 12h10M10 18h4',
   close: 'M6 6l12 12M18 6L6 18',
   plus: 'M12 5v14M5 12h14',
   back: 'M15 5l-7 7 7 7',
