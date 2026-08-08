@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <!-- viewport-fit=cover lets the layout run under the notch; the safe-area
+         insets in the stylesheet keep the tab bar clear of the home indicator. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=yes"
+    />
+    <title>liboff — your shelf, offline</title>
+    <meta name="description" content="Catalogue and rate your books by scanning their barcodes. Works offline, installs to your home screen." />
+
+    <meta name="theme-color" content="#faf6ef" />
+    <meta name="color-scheme" content="light dark" />
+
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="assets/icons/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="assets/icons/icon-192.png" sizes="192x192" type="image/png" />
+    <link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png" />
+
+    <!-- iOS has no manifest support worth relying on; these are what make an
+         added-to-home-screen liboff open without Safari chrome. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="liboff" />
+
+    <link rel="stylesheet" href="assets/app.css" />
+    <link rel="modulepreload" href="src/app.js" />
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot" role="status">
+        <span class="boot__mark" aria-hidden="true"></span>
+        <p>Opening your library…</p>
+      </div>
+    </div>
+    <noscript>
+      <p style="padding: 2rem; font: 16px/1.5 system-ui">
+        liboff needs JavaScript: the whole catalogue lives in your browser, with no server behind it.
+      </p>
+    </noscript>
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>

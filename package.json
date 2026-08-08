@@ -1,0 +1,21 @@
+{
+  "name": "liboff",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Offline-first book catalogue: scan barcodes, rate 0-5 stars or bomb, installable PWA.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "serve": "node scripts/serve.mjs",
+    "test": "node --test \"test/unit/*.test.js\"",
+    "test:e2e": "node --test --test-timeout=120000 \"test/e2e/*.test.js\"",
+    "test:all": "npm test && npm run test:e2e",
+    "icons": "node scripts/generate-icons.mjs",
+    "check": "node scripts/check-syntax.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "//": "No dependencies, by design: the app is a folder of static files that any web server can host. Playwright is only needed for the optional browser tests and is installed ad hoc in CI."
+}
