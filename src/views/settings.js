@@ -12,6 +12,7 @@ import { exportCsv, exportJson, mergeImport, parseImportFile } from '../lib/tran
 import { isPersistent, requestPersistence, storageEstimate } from '../lib/db.js';
 import * as store from '../lib/store.js';
 import { getInstallPrompt, isStandalone } from '../install.js';
+import { checkNow, isSupported } from '../update.js';
 
 function download(filename, text, type) {
   const blob = new Blob([text], { type });
@@ -200,6 +201,43 @@ export function renderSettings(container) {
             ),
           ),
         ),
+        isSupported()
+          ? row(
+              'Version',
+              'The app updates itself in the background. This asks now.',
+              h(
+                'button',
+                {
+                  type: 'button',
+                  class: 'btn btn--ghost',
+                  dataset: { testid: 'check-update' },
+                  onClick: async (event) => {
+                    const button = event.currentTarget;
+                    button.disabled = true;
+                    button.textContent = 'Checking…';
+                    const outcome = await checkNow();
+                    button.disabled = false;
+                    button.textContent = 'Check now';
+                    if (outcome.state === 'updated') {
+                      toast(
+                        `Updated ${outcome.changed} file${outcome.changed === 1 ? '' : 's'} — reloading.`,
+                        { duration: 2000 },
+                      );
+                      // Long enough to read, short enough not to be a wait.
+                      setTimeout(() => location.reload(), 900);
+                      return;
+                    }
+                    if (outcome.state === 'offline') {
+                      toast('Could not reach the server to check.', { kind: 'warn' });
+                      return;
+                    }
+                    toast('You are on the latest version.');
+                  },
+                },
+                'Check now',
+              ),
+            )
+          : null,
         row('Storage', null, null, storageLine),
         !isPersistent()
           ? null
@@ -224,6 +262,32 @@ export function renderSettings(container) {
                 'Request',
               ),
             ),
+      ),
+
+      h(
+        'section',
+        { class: 'section' },
+        h('h2', { class: 'section__title' }, 'Lookups'),
+        h(
+          'p',
+          { class: 'section__hint' },
+          'Open Library and Crossref need nothing. Google Books rations callers who bring no key of their own, against a single quota shared by every app that does the same — when it runs dry, that catalogue goes quiet for everyone at once. A key of your own is a quota of your own, and stays on this device.',
+        ),
+        h('input', {
+          class: 'input',
+          type: 'text',
+          autocomplete: 'off',
+          autocapitalize: 'off',
+          spellcheck: 'false',
+          placeholder: 'Google Books API key (optional)',
+          'aria-label': 'Google Books API key',
+          value: store.state.googleBooksKey,
+          dataset: { testid: 'google-key' },
+          onChange: async (event) => {
+            await store.setGoogleKey(event.target.value);
+            toast(event.target.value.trim() ? 'Key saved — lookups will use it.' : 'Key removed.');
+          },
+        }),
       ),
 
       h(
@@ -261,7 +325,7 @@ export function renderSettings(container) {
         h(
           'p',
           { class: 'section__hint' },
-          'liboff catalogues books offline. Nothing leaves your device except ISBN lookups to Open Library and Google Books.',
+          'liboff catalogues books offline. Nothing leaves your device except ISBN lookups to Open Library, Google Books and Crossref.',
         ),
         h(
           'p',
@@ -271,7 +335,7 @@ export function renderSettings(container) {
         h(
           'p',
           { class: 'section__hint' },
-          'Cover art and metadata come from Open Library and Google Books.',
+          'Cover art and metadata come from Open Library, Google Books and Crossref.',
         ),
       ),
     );

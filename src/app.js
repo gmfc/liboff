@@ -1,7 +1,6 @@
 /** Bootstrap: wire the store, the router, the tab bar and the service worker. */
 
 import { h, icon, mount, qs } from './ui/dom.js';
-import { toast } from './ui/toast.js';
 import * as store from './lib/store.js';
 import { defineRoute, currentPath, navigate, startRouter } from './router.js';
 import { renderLibrary } from './views/library.js';
@@ -9,6 +8,7 @@ import { renderScan } from './views/scan.js';
 import { renderStats } from './views/stats.js';
 import { applyTheme, renderSettings } from './views/settings.js';
 import { onInstallChange, watchInstall } from './install.js';
+import { registerServiceWorker } from './update.js';
 import { closeBookSheet } from './views/book-sheet.js';
 
 const TABS = [
@@ -36,36 +36,6 @@ function renderTabBar(active) {
       ),
     ),
   );
-}
-
-async function registerServiceWorker() {
-  if (!('serviceWorker' in navigator)) return;
-  // file:// has no service worker scope, and the dev flow uses a real server.
-  if (location.protocol === 'file:') return;
-  // Sampled before registering: the worker calls clients.claim(), so by the
-  // time it reports "activated" this page already has a controller even on a
-  // first visit. Only a page that was *already* controlled is seeing an update.
-  const wasControlled = Boolean(navigator.serviceWorker.controller);
-  try {
-    const registration = await navigator.serviceWorker.register(
-      new URL('../sw.js', import.meta.url),
-      { scope: new URL('../', import.meta.url).pathname },
-    );
-    registration.addEventListener('updatefound', () => {
-      const installing = registration.installing;
-      if (!installing || !wasControlled) return;
-      installing.addEventListener('statechange', () => {
-        if (installing.state === 'activated') {
-          toast('A new version is ready.', {
-            duration: 8000,
-            action: { label: 'Reload', onClick: () => location.reload() },
-          });
-        }
-      });
-    });
-  } catch (error) {
-    console.warn('liboff: service worker registration failed —', error);
-  }
 }
 
 function renderOfflineBanner() {

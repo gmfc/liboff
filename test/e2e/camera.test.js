@@ -224,12 +224,13 @@ test('scan flow', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     // 429 is the real-world case: Google Books rations keyless callers, and a
     // rationed reply must not be reported as a book nobody has catalogued.
     let busy = true;
-    await stubCatalogues(page);
     await page.route(OPEN_LIBRARY_URL, (route) =>
       busy
         ? json(route, {}, 429)
         : json(route, { [`ISBN:${isbn}`]: { title: 'Fantastic Mr. Fox' } }),
     );
+    await page.route(GOOGLE_BOOKS_URL, (route) => json(route, {}, 429));
+    await page.route(CROSSREF_URL, (route) => json(route, {}, 503));
 
     await goToTab(page, 'scan');
     await page.click('[data-testid=start-scan]');
@@ -240,6 +241,33 @@ test('scan flow', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await page.click('[data-testid=retry-lookup]');
     await page.waitForSelector('.row-card__title', { timeout: 30000 });
     assert.match(await page.textContent('.result-card__flag'), /Found via Open Library/);
+    await context.close();
+  });
+
+  // The bug that made the app unusable in the field: Google rations keyless
+  // callers against one globally shared quota, so its 429 is the normal state
+  // of the world. Letting that overrule a clean Open Library miss meant every
+  // uncatalogued book reported "could not be reached", and the retry offered
+  // could never help.
+  await t.test('a rationed catalogue does not overrule one that answered', async () => {
+    const isbn = '9791234567896';
+    const { context, page } = await openWithCamera(browser, server.origin, isbn);
+    await stubCatalogues(page);
+    // Registered last, so it takes precedence over the clean stub above.
+    await page.route(GOOGLE_BOOKS_URL, (route) => json(route, {}, 429));
+
+    await goToTab(page, 'scan');
+    await page.click('[data-testid=start-scan]');
+    await page.waitForSelector('[data-testid=candidate-title]', { timeout: 30000 });
+
+    const flag = await page.textContent('.result-card__flag');
+    assert.match(flag, /Not in the catalogues that answered/);
+    assert.doesNotMatch(flag, /could not be reached/);
+    assert.equal(
+      await page.locator('[data-testid=retry-lookup]').count(),
+      1,
+      'still worth asking again, since one catalogue never spoke',
+    );
     await context.close();
   });
 

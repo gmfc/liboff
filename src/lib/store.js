@@ -22,7 +22,7 @@ import { removeTagFromBooks, renameTagInBooks } from './tags.js';
 import { applyShelfSideEffects, makeBook, updateBook } from './model.js';
 import { DEFAULT_SORT } from './query.js';
 import { toIsbn13 } from './isbn.js';
-import { fetchCoverBlob } from './metadata.js';
+import { clearLookupCache, fetchCoverBlob, setGoogleBooksKey } from './metadata.js';
 
 const listeners = new Set();
 
@@ -38,6 +38,8 @@ export const state = {
   sort: DEFAULT_SORT,
   view: 'library',
   theme: 'system',
+  /** Optional, and empty for almost everyone — see setGoogleKey. */
+  googleBooksKey: '',
   online: typeof navigator === 'undefined' ? true : navigator.onLine,
 };
 
@@ -59,18 +61,21 @@ export function setState(patch) {
 }
 
 export async function init() {
-  const [books, collections, sort, shelf, theme] = await Promise.all([
+  const [books, collections, sort, shelf, theme, googleBooksKey] = await Promise.all([
     db.loadBooks(),
     db.loadCollections(),
     db.getSetting('sort', DEFAULT_SORT),
     db.getSetting('shelf', 'all'),
     db.getSetting('theme', 'system'),
+    db.getSetting('googleBooksKey', ''),
   ]);
   state.books = books.map((book) => makeBookSafe(book));
   state.collections = sortCollections(collections.map((entry) => makeCollectionSafe(entry)));
   state.sort = sort;
   state.shelf = shelf;
   state.theme = theme;
+  state.googleBooksKey = googleBooksKey ?? '';
+  setGoogleBooksKey(state.googleBooksKey);
   state.ready = true;
   notify();
   // Covers are decorative, so hydrate them after the first paint.
@@ -333,6 +338,19 @@ export async function cacheCover(book) {
 export async function setPreference(key, value) {
   setState({ [key]: value });
   await db.setSetting(key, value);
+}
+
+/**
+ * Google's keyless Books quota is one pool shared by every caller on earth,
+ * and it is often spent — at which point that catalogue is unavailable to
+ * everybody at once. A key of your own is a quota of your own. It stays on
+ * this device, like everything else here.
+ */
+export async function setGoogleKey(value) {
+  const key = String(value ?? '').trim();
+  setGoogleBooksKey(key);
+  clearLookupCache(); // the previous key's misses are not this key's misses
+  await setPreference('googleBooksKey', key);
 }
 
 export function watchConnectivity() {
