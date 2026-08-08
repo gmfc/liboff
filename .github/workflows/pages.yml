@@ -24,7 +24,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # enablement: true turns Pages on through the API on the first run.
+      # Without it the workflow fails with "Get Pages site failed" until
+      # somebody flips the setting by hand — a deploy that cannot deploy until
+      # a human reads the log is not much of a deploy.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       # There is no build step: the repository *is* the site. Only the files
       # the app needs at runtime are uploaded.
