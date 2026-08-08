@@ -1,0 +1,15 @@
+# The app has no dependencies; node_modules only ever appears when Playwright
+# is installed ad hoc to run the browser tests.
+node_modules/
+package-lock.json
+
+# Pages build output
+_site/
+
+# Playwright leftovers
+test-results/
+playwright-report/
+*.tgz
+
+.DS_Store
+*.log

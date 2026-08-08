@@ -1,0 +1,48 @@
+liboff — third-party components
+===============================
+
+liboff itself is MIT licensed (see LICENSE).
+
+vendor/zbar-wasm/
+-----------------
+
+A verbatim, unmodified copy of @undecaf/zbar-wasm version 0.11.0:
+
+    https://github.com/undecaf/zbar-wasm
+    https://www.npmjs.com/package/@undecaf/zbar-wasm
+
+Licence: LGPL-2.1-or-later. The full text is at vendor/zbar-wasm/LICENSE.
+It wraps the ZBar barcode reader (https://github.com/mchehab/zbar), also
+LGPL-2.1-or-later.
+
+How it is used, and why that matters for the licence:
+
+  * The files are byte-for-byte upstream. Nothing in them has been edited;
+    CI re-downloads the published tarball and compares.
+  * liboff loads it as a separate module at runtime, via a dynamic import
+    from src/scanner/decode.js. It is not bundled, inlined, minified with,
+    or otherwise combined into liboff's own code.
+  * Replacing it is a file swap: drop a different build of the same library
+    into vendor/zbar-wasm/ keeping the filenames, or point the ZBAR_URL
+    constant in src/scanner/decode.js elsewhere. Nothing else needs to
+    change, and no other part of the app imports it.
+
+This keeps the LGPL component separable and replaceable, as the licence
+intends, while the rest of liboff remains MIT.
+
+Reproducing the vendored files:
+
+    npm pack @undecaf/zbar-wasm@0.11.0
+    tar xzf undecaf-zbar-wasm-0.11.0.tgz
+    cp package/dist/index.mjs   vendor/zbar-wasm/
+    cp package/dist/index.d.ts  vendor/zbar-wasm/
+    cp package/dist/zbar.wasm   vendor/zbar-wasm/
+    cp package/LICENSE          vendor/zbar-wasm/
+
+Data sources
+------------
+
+Book metadata and cover images are fetched at runtime from Open Library
+(https://openlibrary.org) and Google Books
+(https://developers.google.com/books). No data is redistributed with this
+repository; nothing is sent to them but an ISBN or a search string.

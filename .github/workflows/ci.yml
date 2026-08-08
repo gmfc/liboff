@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  # Only the default branch on push: pull_request already covers every branch
+  # that has a PR open, and listening to both ran the whole suite twice per
+  # push.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Checks and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # No `npm ci`: the app has no dependencies, and keeping it that way is
+      # part of the point.
+      - name: Static checks
+        run: npm run check
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Icons are reproducible from the generator
+        run: |
+          npm run icons
+          if ! git diff --quiet -- assets/icons; then
+            echo "::error::assets/icons differ from scripts/generate-icons.mjs output — re-run npm run icons and commit"
+            git --no-pager diff --stat -- assets/icons
+            exit 1
+          fi
+
+      - name: Vendored zbar-wasm is an unmodified upstream copy
+        run: |
+          npm pack @undecaf/zbar-wasm@0.11.0 >/dev/null
+          tar xzf undecaf-zbar-wasm-0.11.0.tgz
+          for f in index.mjs index.d.ts zbar.wasm; do
+            cmp "package/dist/$f" "vendor/zbar-wasm/$f" \
+              || { echo "::error::vendor/zbar-wasm/$f differs from upstream"; exit 1; }
+          done
+          cmp package/LICENSE vendor/zbar-wasm/LICENSE
+          rm -rf package undecaf-zbar-wasm-0.11.0.tgz
+          echo "vendored decoder matches upstream 0.11.0"
+
+  browser:
+    name: Browser tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Installed here rather than declared as a devDependency so a checkout of
+      # this repo stays dependency-free.
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@latest
+          npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
