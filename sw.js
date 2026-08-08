@@ -1,16 +1,24 @@
 /**
  * Service worker.
  *
- * Three caching policies, chosen by what the request is for:
+ * Caching policy, chosen by what the request is for:
  *
- *   app shell   precache, cache-first     — the app must open with no network
- *   wasm decoder runtime, cache-first     — 240 KB only fetched by browsers
- *                                           that lack BarcodeDetector, then kept
- *   covers      runtime, cache-first      — immutable once fetched
- *   metadata    network-first, no cache   — a stale ISBN lookup helps nobody
+ *   app shell    precached, then stale-while-revalidate — opens instantly and
+ *                with no network, while a redeployed file still reaches the
+ *                app on the visit after it lands
+ *   wasm decoder runtime, cache-first — 240 KB, only fetched by browsers that
+ *                lack BarcodeDetector, and immutable once fetched
+ *   covers       runtime, cache-first — immutable once fetched
+ *   metadata     network only — a stale ISBN lookup helps nobody
  *
- * Bump CACHE_VERSION whenever the precache list or any shell file changes; the
- * old cache is deleted on activate.
+ * The shell is deliberately not cache-first. This app has no build step and so
+ * no content hashes in its filenames: cache-first would serve the first
+ * version a device ever saw until CACHE_VERSION happened to be bumped by hand,
+ * which is exactly the kind of thing that gets forgotten and strands users on
+ * old code. Revalidating in the background costs one conditional request per
+ * asset while online and nothing at all while offline.
+ *
+ * CACHE_VERSION only needs bumping to discard old caches wholesale.
  */
 
 const CACHE_VERSION = 'v1';
@@ -95,6 +103,29 @@ async function cacheFirst(request, cacheName) {
   return response;
 }
 
+/**
+ * Answer from cache immediately, then refresh the entry in the background so
+ * the next load gets the newer file. `event.waitUntil` keeps the worker alive
+ * for the refresh after the response has already gone out.
+ */
+async function staleWhileRevalidate(event, request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request);
+
+  const refresh = fetch(request)
+    .then((response) => {
+      if (response.ok) cache.put(request, response.clone()).catch(() => {});
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    event.waitUntil(refresh);
+    return cached;
+  }
+  return (await refresh) ?? new Response('', { status: 504, statusText: 'Offline' });
+}
+
 async function networkFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   try {
@@ -149,7 +180,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    cacheFirst(request, SHELL_CACHE).catch(
+    staleWhileRevalidate(event, request, SHELL_CACHE).catch(
       () => new Response('', { status: 504, statusText: 'Offline' }),
     ),
   );

@@ -54,7 +54,7 @@ simply this repository.
 ```
 index.html            app shell
 manifest.webmanifest  installability
-sw.js                 offline caching — precached shell, cached covers
+sw.js                 offline caching, and how updates reach the app
 assets/app.css        one stylesheet, mobile-first, light and dark
 src/
   app.js              bootstrap: store, router, tab bar, service worker
@@ -69,6 +69,13 @@ vendor/zbar-wasm/     barcode decoder, unmodified upstream (see Licence)
 **Storage.** Books live in IndexedDB, and covers are stored beside them as
 blobs so a shelf still looks like a shelf on a plane. The whole library is held
 in memory and written through, so no render ever waits on the database.
+
+**Updates.** The shell is precached so the app opens offline, then revalidated
+in the background, so a redeployed file reaches an installed app on the visit
+after it lands. That matters here because there is no build step and therefore
+no content hashes in the filenames: a plain cache-first worker would pin every
+device to the first version it ever saw until someone remembered to bump a
+constant.
 
 **Barcodes.** Where the platform provides `BarcodeDetector` — Android Chrome,
 recent desktop Chrome — that is used. Everywhere else, notably **iOS Safari**,
@@ -99,9 +106,10 @@ npm run icons      # regenerate the PNG icons from scripts/generate-icons.mjs
 ```
 
 The browser tests drive a real Chromium: they add and rate books, reload to
-prove persistence, cut the network to prove the offline claim, and decode
-synthesised EAN-13 barcodes through the same wasm path iOS uses. Playwright is
-not a dependency of the project, so install it when you want to run them:
+prove persistence, cut the network to prove the offline claim, redeploy a file
+to prove updates land, and decode synthesised EAN-13 barcodes through the same
+wasm path iOS uses. Playwright is not a dependency of the project, so install
+it when you want to run them:
 
 ```sh
 npm install --no-save playwright && npx playwright install chromium

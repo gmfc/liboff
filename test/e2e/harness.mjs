@@ -9,6 +9,8 @@
 
 import { createRequire } from 'node:module';
 import { existsSync, readdirSync } from 'node:fs';
+import { cp, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,6 +61,33 @@ export async function launchBrowser(playwright) {
     if (!executablePath) throw error;
     return playwright.chromium.launch({ args, executablePath });
   }
+}
+
+/**
+ * Serves a throwaway copy of the site on an ephemeral port, so a test can
+ * change a deployed file and observe what the app does about it.
+ */
+export async function startMutableServer() {
+  const dir = await mkdtemp(join(tmpdir(), 'liboff-deploy-'));
+  for (const entry of ['index.html', 'manifest.webmanifest', 'sw.js', 'assets', 'src', 'vendor']) {
+    await cp(join(ROOT, entry), join(dir, entry), { recursive: true });
+  }
+  const server = createStaticServer(dir);
+  await new Promise((done) => server.listen(0, '127.0.0.1', done));
+  const { port } = server.address();
+  return {
+    dir,
+    origin: `http://127.0.0.1:${port}`,
+    /** Rewrite a file as a deploy would. */
+    async deploy(relativePath, transform) {
+      const target = join(dir, relativePath);
+      await writeFile(target, transform(await readFile(target, 'utf8')));
+    },
+    async close() {
+      await new Promise((done) => server.close(done));
+      await rm(dir, { recursive: true, force: true });
+    },
+  };
 }
 
 /** Serves the repository root on an ephemeral port. */

@@ -11,7 +11,15 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { launchBrowser, loadPlaywright, openApp, startServer, ROOT, SKIP_REASON } from './harness.mjs';
+import {
+  launchBrowser,
+  loadPlaywright,
+  openApp,
+  startMutableServer,
+  startServer,
+  ROOT,
+  SKIP_REASON,
+} from './harness.mjs';
 
 const playwright = loadPlaywright();
 
@@ -135,6 +143,50 @@ test('progressive web app', { skip: playwright ? false : SKIP_REASON }, async (t
       { timeout: 5000 },
     );
     await context.close();
+  });
+
+  // Without this the app would be frozen on whatever version a device first
+  // saw. There are no content hashes in these filenames — no build step makes
+  // them — so the service worker has to be the thing that notices.
+  await t.test('a redeployed file reaches an already-installed app', async () => {
+    const site = await startMutableServer();
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+
+    // try/finally so a failing assertion does not leave the temporary server
+    // listening — an open handle turns a one-line failure into a suite timeout.
+    try {
+      const outline = () =>
+        page.evaluate(() => getComputedStyle(document.querySelector('.tabbar')).outlineColor);
+
+      await page.goto(`${site.origin}/index.html`, { waitUntil: 'load' });
+      await page.waitForSelector('.tabbar');
+      await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 20000 });
+      assert.notEqual(await outline(), 'rgb(1, 2, 3)', 'sanity: the marker is not there yet');
+
+      await site.deploy('assets/app.css', (css) => `${css}\n.tabbar { outline-color: rgb(1, 2, 3); }\n`);
+
+      // First load after the deploy still paints the cached copy and refreshes it
+      // in the background; the one after that is the new file.
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('.tabbar');
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('.tabbar');
+      await page.waitForFunction(
+        () => getComputedStyle(document.querySelector('.tabbar')).outlineColor === 'rgb(1, 2, 3)',
+        null,
+        { timeout: 15000 },
+      );
+
+      // ...and the app must still open with the network gone afterwards.
+      await context.setOffline(true);
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('.tabbar', { timeout: 20000 });
+      await context.setOffline(false);
+    } finally {
+      await context.close();
+      await site.close();
+    }
   });
 
   await t.test('the barcode decoder still works offline once it has been used', async () => {
