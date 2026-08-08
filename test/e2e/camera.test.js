@@ -55,18 +55,37 @@ function fakeCamera({ modules }) {
   navigator.mediaDevices.getUserMedia = async () => stream;
 }
 
-/** A canned Open Library reply, so the flow does not depend on the network. */
-async function stubLookup(page, isbn, data) {
-  await page.route('**/openlibrary.org/**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ [`ISBN:${isbn}`]: data }),
-    });
-  });
-  // Google Books is the fallback; it must never be reached for these cases.
-  await page.route('**/googleapis.com/**', (route) => route.abort());
+const json = (route, body, status = 200) =>
+  route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+
+/**
+ * Canned catalogue replies, so the flow does not depend on the network.
+ *
+ * All three are stubbed on every test: the lookup asks Open Library and Google
+ * Books together and falls through to Crossref, so leaving one unstubbed would
+ * put a real request in the middle of a browser test.
+ */
+// Matched by regular expression, not by glob. Playwright's `**` still needs a
+// literal `/` before what follows it, so `**/googleapis.com/**` never matched
+// `https://www.googleapis.com/...` — the stub silently did nothing and the
+// tests reached the real API.
+const OPEN_LIBRARY_URL = /\/\/openlibrary\.org\//;
+const GOOGLE_BOOKS_URL = /googleapis\.com\//;
+const CROSSREF_URL = /crossref\.org\//;
+
+async function stubCatalogues(page, { openLibrary = {}, google = { totalItems: 0 }, crossref = { message: { items: [] } } } = {}) {
+  await page.route(OPEN_LIBRARY_URL, (route) => json(route, openLibrary));
+  await page.route(GOOGLE_BOOKS_URL, (route) => json(route, google));
+  await page.route(CROSSREF_URL, (route) => json(route, crossref));
 }
+
+/** The common case: Open Library knows the book, nobody else is needed. */
+const stubLookup = (page, isbn, data, rest) =>
+  stubCatalogues(page, { openLibrary: { [`ISBN:${isbn}`]: data }, ...rest });
+
+const googleVolume = (isbn, info) => ({
+  items: [{ volumeInfo: { industryIdentifiers: [{ type: 'ISBN_13', identifier: isbn }], ...info } }],
+});
 
 async function openWithCamera(browser, origin, code, contextOptions = {}) {
   const { modules } = encodeEan13(code);
@@ -151,18 +170,90 @@ test('scan flow', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await context.close();
   });
 
+  await t.test('a pre-2007 book filed under its ISBN-10 is still found from the barcode', async () => {
+    // The barcode carries the ISBN-13; the catalogue entry is under the
+    // ISBN-10. Asking about only the scanned form is how a book that is
+    // plainly catalogued comes back as unknown.
+    const isbn = '9780140328721';
+    const { context, page } = await openWithCamera(browser, server.origin, isbn);
+    await stubLookup(page, '0140328726', { title: 'Fantastic Mr. Fox', authors: [{ name: 'Roald Dahl' }] });
+
+    await goToTab(page, 'scan');
+    await page.click('[data-testid=start-scan]');
+    await page.waitForSelector('[data-testid=scan-result]', { timeout: 30000 });
+    assert.match(await page.textContent('.row-card__title'), /Fantastic Mr\. Fox/);
+
+    await page.click('[data-testid=confirm-add]');
+    const book = await page.evaluate(async () => {
+      const store = await import('/src/lib/store.js');
+      return store.state.books[0];
+    });
+    assert.equal(book.isbn, isbn, 'stored under the scanned form, whichever one answered');
+    await context.close();
+  });
+
+  await t.test('what each catalogue knows is combined, not the first answer taken', async () => {
+    const isbn = '9780140328721';
+    const { context, page } = await openWithCamera(browser, server.origin, isbn);
+    await stubLookup(
+      page,
+      isbn,
+      // Open Library very often has no page count.
+      { title: 'Fantastic Mr. Fox', authors: [{ name: 'Roald Dahl' }], publish_date: '1988' },
+      { google: googleVolume(isbn, { title: 'Fantastic Mr. Fox', pageCount: 96 }) },
+    );
+
+    await goToTab(page, 'scan');
+    await page.click('[data-testid=start-scan]');
+    await page.waitForSelector('[data-testid=scan-result]', { timeout: 30000 });
+    assert.match(await page.textContent('.result-card__flag'), /Open Library \+ Google Books/);
+
+    await page.click('[data-testid=confirm-add]');
+    const book = await page.evaluate(async () => {
+      const store = await import('/src/lib/store.js');
+      return store.state.books[0];
+    });
+    assert.equal(book.year, 1988, 'from Open Library');
+    assert.equal(book.pages, 96, 'from Google Books, which first-answer-wins would have lost');
+    await context.close();
+  });
+
+  await t.test('a catalogue that cannot be reached offers a retry rather than a shrug', async () => {
+    const isbn = '9780140328721';
+    const { context, page } = await openWithCamera(browser, server.origin, isbn);
+    // 429 is the real-world case: Google Books rations keyless callers, and a
+    // rationed reply must not be reported as a book nobody has catalogued.
+    let busy = true;
+    await stubCatalogues(page);
+    await page.route(OPEN_LIBRARY_URL, (route) =>
+      busy
+        ? json(route, {}, 429)
+        : json(route, { [`ISBN:${isbn}`]: { title: 'Fantastic Mr. Fox' } }),
+    );
+
+    await goToTab(page, 'scan');
+    await page.click('[data-testid=start-scan]');
+    await page.waitForSelector('[data-testid=retry-lookup]', { timeout: 30000 });
+    assert.match(await page.textContent('.result-card__flag'), /could not be reached/);
+
+    busy = false;
+    await page.click('[data-testid=retry-lookup]');
+    await page.waitForSelector('.row-card__title', { timeout: 30000 });
+    assert.match(await page.textContent('.result-card__flag'), /Found via Open Library/);
+    await context.close();
+  });
+
   await t.test('a book the catalogue does not know still gets added by hand', async () => {
     const isbn = '9791234567896';
     const { context, page } = await openWithCamera(browser, server.origin, isbn);
-    await page.route('**/openlibrary.org/**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-    );
-    await page.route('**/googleapis.com/**', (route) => route.abort());
+    await stubCatalogues(page);
 
     await goToTab(page, 'scan');
     await page.click('[data-testid=start-scan]');
     await page.waitForSelector('[data-testid=candidate-title]', { timeout: 30000 });
 
+    assert.match(await page.textContent('.result-card__flag'), /No catalogue entry/);
+    assert.equal(await page.locator('[data-testid=retry-lookup]').count(), 0, 'nothing to retry');
     assert.match(await page.textContent('.result-card__isbn'), /9 791234 567896/);
     await page.fill('[data-testid=candidate-title]', 'A Book Nobody Catalogued');
     await page.click('[data-testid=confirm-add]');
@@ -178,9 +269,7 @@ test('scan flow', { skip: playwright ? false : SKIP_REASON }, async (t) => {
 
   await t.test('stopping the scanner releases the camera', async () => {
     const { context, page } = await openWithCamera(browser, server.origin, '9780140328721');
-    await page.route('**/openlibrary.org/**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-    );
+    await stubCatalogues(page);
     await goToTab(page, 'scan');
     await page.click('[data-testid=start-scan]');
     await page.waitForFunction(() => document.querySelector('.scanner__video')?.videoWidth > 0, null, {
@@ -198,9 +287,7 @@ test('scan flow', { skip: playwright ? false : SKIP_REASON }, async (t) => {
 
   await t.test('navigating away from the scan tab shuts the camera down', async () => {
     const { context, page } = await openWithCamera(browser, server.origin, '9780140328721');
-    await page.route('**/openlibrary.org/**', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-    );
+    await stubCatalogues(page);
     await goToTab(page, 'scan');
     await page.click('[data-testid=start-scan]');
     await page.waitForFunction(() => document.querySelector('.scanner__video')?.videoWidth > 0, null, {

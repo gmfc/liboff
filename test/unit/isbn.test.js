@@ -5,6 +5,7 @@ import {
   cleanIsbn,
   formatIsbn,
   isbn10To13,
+  isbn13To10,
   isbnFromBarcode,
   isValidIsbn,
   isValidIsbn10,
@@ -47,6 +48,27 @@ test('widens ISBN-10 to ISBN-13', () => {
   assert.equal(isbn10To13('0140328726'), '9780140328721');
   assert.equal(isbn10To13('080442957X'), '9780804429573');
   assert.equal(isbn10To13('nonsense'), null);
+});
+
+test('narrows ISBN-13 back to ISBN-10, which catalogues still file old books under', () => {
+  assert.equal(isbn13To10('9780140328721'), '0140328726');
+  assert.equal(isbn13To10('9780804429573'), '080442957X', 'a check digit of ten is X');
+  assert.equal(isbn13To10('978-0-441-01359-3'), '0441013597', 'punctuation is no obstacle');
+  assert.equal(isbn13To10('nonsense'), null);
+});
+
+test('a 979 ISBN has no ISBN-10 form, and is not given a made-up one', () => {
+  assert.equal(
+    isbn13To10('9791234567896'),
+    null,
+    '979 was minted after the changeover; there is nothing to narrow to',
+  );
+});
+
+test('the two widths round-trip', () => {
+  for (const ten of ['0140328726', '0441013597', '080442957X', '0061120081']) {
+    assert.equal(isbn13To10(isbn10To13(ten)), ten);
+  }
 });
 
 test('toIsbn13 normalises every accepted form to one key', () => {

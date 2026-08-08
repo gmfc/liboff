@@ -15,8 +15,9 @@ build step and no dependencies.
 
 ## What it does
 
-- **Scan** the EAN-13 barcode on a book and it is catalogued in a couple of
-  seconds — the scanner keeps running so you can work through a whole shelf.
+- **Scan** the EAN-13 barcode on a book and it is catalogued in about half a
+  second — three catalogues, asked under both widths of the ISBN, and their
+  answers merged. The scanner keeps running so you can work through a shelf.
 - **Rank** every book 0–5 stars, or hand it a **bomb** for the ones that are
   not merely weak but actively bad. Zero stars and a bomb are different
   verdicts, and a bomb sorts below zero.
@@ -113,9 +114,32 @@ a 240 KB WebAssembly build of zbar is fetched on first use and then kept. Each
 frame is cropped to the on-screen guide and downscaled before decoding, and a
 code has to be read twice before it counts.
 
-**Metadata** comes from Open Library, falling back to Google Books. Neither
-needs a key. When both are unreachable you can still type the book in, and the
-ISBN is kept either way.
+**Metadata.** Open Library and Google Books are asked at the same time and
+their answers are *combined* — Open Library describes the edition in your
+hands, Google usually knows how many pages it has, and taking whichever
+replied first threw the other away on every lookup. Crossref is asked only
+when both miss, since it indexes scholarly books the trade catalogues do not
+carry. None of them needs a key.
+
+Three details do most of the work:
+
+- **Both widths of the number are asked about**, in one request. A book printed
+  before 2007 is often filed under its ISBN-10 while the barcode carries the
+  ISBN-13, and asking about only the scanned form is how a book that is plainly
+  catalogued comes back as unknown.
+- **An answer has to carry the ISBN to be believed.** Open Library replies are
+  keyed by the number asked for, so they verify themselves; Google's `isbn:` is
+  a *search*, and a search can return something else. A confidently mislabelled
+  book is worse than no book.
+- **"Nobody catalogued this" and "the catalogue did not answer" are different
+  things**, and the app says which. A rate-limited or unreachable service is
+  retried once, then reported as what it is, with a button to try again —
+  Google rations keyless callers by address, so this is a real Tuesday, not a
+  hypothetical.
+
+When nothing answers you can still type the book in, and the ISBN is kept
+either way. Lookups made this session are remembered, so re-reading a barcode
+costs nothing.
 
 ## Your data
 
