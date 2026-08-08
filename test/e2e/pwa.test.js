@@ -165,6 +165,12 @@ test('progressive web app', { skip: playwright ? false : SKIP_REASON }, async (t
       assert.notEqual(await outline(), 'rgb(1, 2, 3)', 'sanity: the marker is not there yet');
 
       await site.deploy('assets/app.css', (css) => `${css}\n.tabbar { outline-color: rgb(1, 2, 3); }\n`);
+      // index.html too: navigations are answered from cache, so the document
+      // has to be refreshed by the same mechanism or the app would be pinned
+      // to its first HTML forever.
+      await site.deploy('index.html', (html) =>
+        html.replace('<title>liboff', '<title>liboff v2'),
+      );
 
       // First load after the deploy still paints the cached copy and refreshes it
       // in the background; the one after that is the new file.
@@ -177,6 +183,7 @@ test('progressive web app', { skip: playwright ? false : SKIP_REASON }, async (t
         null,
         { timeout: 15000 },
       );
+      assert.match(await page.title(), /^liboff v2/, 'the document itself must update too');
 
       // ...and the app must still open with the network gone afterwards.
       await context.setOffline(true);

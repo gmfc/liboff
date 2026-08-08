@@ -4,8 +4,8 @@
  * Caching policy, chosen by what the request is for:
  *
  *   app shell    precached, then stale-while-revalidate — opens instantly and
- *                with no network, while a redeployed file still reaches the
- *                app on the visit after it lands
+ *                with no network, navigations included, while a redeployed
+ *                file still reaches the app on the visit after it lands
  *   wasm decoder runtime, cache-first — 240 KB, only fetched by browsers that
  *                lack BarcodeDetector, and immutable once fetched
  *   covers       runtime, cache-first — immutable once fetched
@@ -126,17 +126,37 @@ async function staleWhileRevalidate(event, request, cacheName) {
   return (await refresh) ?? new Response('', { status: 504, statusText: 'Offline' });
 }
 
-async function networkFirst(request, cacheName) {
-  const cache = await caches.open(cacheName);
-  try {
-    const response = await fetch(request);
-    if (response.ok) cache.put(request, response.clone()).catch(() => {});
-    return response;
-  } catch (error) {
-    const hit = await cache.match(request);
-    if (hit) return hit;
-    throw error;
+/**
+ * The SPA shell for any in-scope navigation.
+ *
+ * Same policy as the rest of the shell — answer from cache, refresh behind —
+ * so launching an installed app never waits on a network round trip for its
+ * HTML. Any in-scope URL falls back to index.html, because the route lives in
+ * the hash and the document is always the same one.
+ */
+async function shellResponse(event, request) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached =
+    (await cache.match(request)) ?? (await cache.match('index.html')) ?? (await cache.match('./'));
+
+  const refresh = fetch(request)
+    .then((response) => {
+      if (response.ok) cache.put(request, response.clone()).catch(() => {});
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    event.waitUntil(refresh);
+    return cached;
   }
+  return (
+    (await refresh) ??
+    new Response('liboff is offline and has no cached copy yet.', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain' },
+    })
+  );
 }
 
 self.addEventListener('fetch', (event) => {
@@ -161,21 +181,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // A navigation to any in-scope URL is the SPA shell; the hash picks the view.
   if (request.mode === 'navigate') {
-    event.respondWith(
-      networkFirst(request, SHELL_CACHE).catch(async () => {
-        const cache = await caches.open(SHELL_CACHE);
-        return (
-          (await cache.match('index.html')) ??
-          (await cache.match('./')) ??
-          new Response('liboff is offline and has no cached copy yet.', {
-            status: 503,
-            headers: { 'Content-Type': 'text/plain' },
-          })
-        );
-      }),
-    );
+    event.respondWith(shellResponse(event, request));
     return;
   }
 
