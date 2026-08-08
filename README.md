@@ -65,8 +65,9 @@ manifest.webmanifest  installability
 sw.js                 offline caching, and how updates reach the app
 assets/app.css        one stylesheet, mobile-first, light and dark
 src/
-  app.js              bootstrap: store, router, tab bar, service worker
+  app.js              bootstrap: store, router, tab bar
   router.js           hash routing (works from any static subpath)
+  update.js           service worker registration and the update check
   lib/                isbn, model, collections, tags, query, transfer, db,
                       metadata, store
   scanner/            decode (BarcodeDetector or wasm) + camera loop
@@ -108,6 +109,14 @@ no content hashes in the filenames: a plain cache-first worker would pin every
 device to the first version it ever saw until someone remembered to bump a
 constant.
 
+**More → Version → Check now** does it immediately. It deliberately does more
+than `registration.update()`: that call only re-fetches `sw.js`, and with no
+build step a deploy that changes a view leaves the worker byte-identical — so
+it would find nothing and the app would report itself current while still
+serving yesterday's files. The worker instead re-fetches every precached asset,
+compares it byte for byte with what it holds, and reports how many actually
+differ. Nothing changed means nothing changed; anything else reloads onto it.
+
 **Barcodes.** Where the platform provides `BarcodeDetector` — Android Chrome,
 recent desktop Chrome — that is used. Everywhere else, notably **iOS Safari**,
 a 240 KB WebAssembly build of zbar is fetched on first use and then kept. Each
@@ -132,14 +141,25 @@ Three details do most of the work:
   a *search*, and a search can return something else. A confidently mislabelled
   book is worse than no book.
 - **"Nobody catalogued this" and "the catalogue did not answer" are different
-  things**, and the app says which. A rate-limited or unreachable service is
-  retried once, then reported as what it is, with a button to try again —
-  Google rations keyless callers by address, so this is a real Tuesday, not a
-  hypothetical.
+  things**, and the app says which. A service that is rate-limited or
+  unreachable is retried once, then reported as what it is, with a button to
+  try again. But a catalogue that failed never overrules one that answered:
+  if anybody gave a straight "not here", that is the verdict, marked as reached
+  with a source missing.
+
+That last rule is not hypothetical. Google rations callers who bring no key of
+their own against **a single quota shared by every such caller in the world**
+(`project_number:624717413613`, the same consumer for everybody), and that pool
+runs dry. Letting its 429 outvote a clean Open Library miss meant every
+uncatalogued book reported "could not be reached", and the retry it offered
+could never help. If you want Google Books back for good, **More → Lookups**
+takes an API key of your own, which is a quota of your own; it stays on the
+device like everything else here.
 
 When nothing answers you can still type the book in, and the ISBN is kept
 either way. Lookups made this session are remembered, so re-reading a barcode
-costs nothing.
+costs nothing — except a verdict reached while a catalogue was silent, which is
+never cached.
 
 ## Your data
 

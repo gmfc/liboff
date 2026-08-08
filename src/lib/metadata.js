@@ -23,7 +23,11 @@
  * **Honesty.** A rate-limited or unreachable catalogue is not the same as a
  * book nobody has catalogued, and telling the two apart is the difference
  * between "try again" and "type the title in yourself". Every result says
- * which it is.
+ * which it is — but a catalogue that failed never gets to overrule one that
+ * answered. Google Books rations keyless callers against a single shared
+ * quota (`project_number:624717413613`, the same consumer for everybody), and
+ * that pool runs dry; letting its 429 turn every clean Open Library miss into
+ * "could not be reached" made the app useless exactly when it was working.
  *
  * Nothing here throws. A lookup is always optional — the caller can fall back
  * to manual entry, and offline it must.
@@ -181,9 +185,22 @@ function fromGoogleVolume(info) {
   };
 }
 
+/**
+ * Google's keyless quota is shared by every caller in the world and is
+ * regularly spent, at which point Google Books is simply unavailable to this
+ * app. A key of your own is a per-project quota instead, so Settings offers
+ * somewhere to put one. Empty is the normal case and stays keyless.
+ */
+let googleBooksKey = '';
+
+export function setGoogleBooksKey(key) {
+  googleBooksKey = String(key ?? '').trim();
+}
+
 async function fromGoogleBooks(isbns) {
+  const key = googleBooksKey ? `&key=${encodeURIComponent(googleBooksKey)}` : '';
   for (const isbn of isbns) {
-    const { data, transient } = await requestOnce(`${GOOGLE_BOOKS}?q=isbn:${isbn}&maxResults=5`);
+    const { data, transient } = await requestOnce(`${GOOGLE_BOOKS}?q=isbn:${isbn}&maxResults=5${key}`);
     // A rationed or unreachable Google says nothing about the other form
     // either, so stop rather than report a miss it never made.
     if (transient) return { record: null, transient: true };
@@ -284,8 +301,8 @@ export function clearLookupCache() {
   cache.clear();
 }
 
-function result(status, book = null, sources = []) {
-  return { status, book, sources };
+function result(status, book = null, sources = [], partial = false) {
+  return { status, book, sources, partial };
 }
 
 /**
@@ -293,7 +310,9 @@ function result(status, book = null, sources = []) {
  * @param {{refresh?: boolean}} [options] `refresh` skips the cache, for the
  *        retry offered after a lookup could not reach anything.
  * @returns {Promise<{status: 'found'|'not-found'|'unavailable',
- *                    book: object|null, sources: string[]}>}
+ *                    book: object|null, sources: string[], partial: boolean}>}
+ *          `partial` marks a verdict reached while some catalogue was silent:
+ *          the answer stands, but it is worth offering to ask again.
  */
 export async function lookupIsbn(input, options = {}) {
   const isbn = toIsbn13(input);
@@ -310,29 +329,39 @@ export async function lookupIsbn(input, options = {}) {
   // pre-2007 book is filed under. 979 prefixes have no ISBN-10 and yield one.
   const isbns = [isbn, isbn13To10(isbn)].filter(Boolean);
 
-  const [openLibrary, google] = await Promise.all([
-    fromOpenLibrary(isbns),
-    fromGoogleBooks(isbns),
-  ]);
-  let records = [openLibrary.record, google.record];
-  let transient = openLibrary.transient || google.transient;
+  const attempts = await Promise.all([fromOpenLibrary(isbns), fromGoogleBooks(isbns)]);
+  let records = attempts.map((attempt) => attempt.record);
 
-  if (!records.some(Boolean) && !transient) {
+  // Asked whenever nothing has been found — including when a catalogue fell
+  // over. Gating this on a clean sweep meant that while Google's shared quota
+  // was spent, which is most of the time, Crossref was never asked at all.
+  if (!records.some(Boolean)) {
     const crossref = await fromCrossref(isbns);
-    records = [crossref.record];
-    transient = crossref.transient;
+    attempts.push(crossref);
+    records = [...records, crossref.record];
   }
 
+  const silent = attempts.filter((attempt) => attempt.transient).length;
   const merged = mergeRecords(records);
+
   if (!merged) {
-    // Nothing found, but say so only if every catalogue actually answered.
-    const outcome = transient ? result(UNAVAILABLE) : result(NOT_FOUND);
-    if (!transient) cache.set(isbn, outcome);
+    // A catalogue that could not answer does not get to overrule one that
+    // did: if anybody gave a straight answer, "not catalogued" is the honest
+    // verdict, flagged as partial so it can still be queried again.
+    const everySilent = silent === attempts.length;
+    const outcome = everySilent ? result(UNAVAILABLE) : result(NOT_FOUND, null, [], silent > 0);
+    // A verdict reached with a catalogue missing may change; do not keep it.
+    if (!silent) cache.set(isbn, outcome);
     return outcome;
   }
 
   const { sources, ...book } = merged;
-  const found = result(FOUND, { ...book, isbn, coverUrl: book.coverUrl || coverUrlFor(isbn) }, sources);
+  const found = result(
+    FOUND,
+    { ...book, isbn, coverUrl: book.coverUrl || coverUrlFor(isbn) },
+    sources,
+    silent > 0,
+  );
   cache.set(isbn, found);
   return found;
 }

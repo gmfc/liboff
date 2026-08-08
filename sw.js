@@ -39,6 +39,7 @@ const SHELL_ASSETS = [
   'src/app.js',
   'src/router.js',
   'src/install.js',
+  'src/update.js',
   'src/lib/collections.js',
   'src/lib/db.js',
   'src/lib/isbn.js',
@@ -198,6 +199,66 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+/** Byte-for-byte, because an icon that changed must not compare equal. */
+function sameBytes(a, b) {
+  if (a.byteLength !== b.byteLength) return false;
+  const left = new Uint8Array(a);
+  const right = new Uint8Array(b);
+  for (let i = 0; i < left.length; i += 1) {
+    if (left[i] !== right[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Re-fetch the whole shell from the network and report what actually moved.
+ *
+ * `registration.update()` alone is not enough to answer "am I running the
+ * latest version?": it only re-fetches sw.js, and a deploy that changes a view
+ * but not the worker leaves it byte-identical. The app would report itself up
+ * to date while still serving yesterday's files out of the cache. So this
+ * compares every precached asset against the network and counts the ones that
+ * differ — which is also the answer to "is a reload going to change anything".
+ */
+async function refreshShell() {
+  const cache = await caches.open(SHELL_CACHE);
+  let changed = 0;
+  let failed = 0;
+
+  await Promise.all(
+    SHELL_ASSETS.map(async (asset) => {
+      const request = new Request(asset, { cache: 'reload' });
+      try {
+        const response = await fetch(request);
+        if (!response.ok) {
+          failed += 1;
+          return;
+        }
+        const fresh = await response.clone().arrayBuffer();
+        const cached = await cache.match(asset);
+        const before = cached ? await cached.arrayBuffer() : null;
+        if (!before || !sameBytes(before, fresh)) changed += 1;
+        await cache.put(asset, response);
+      } catch {
+        failed += 1;
+      }
+    }),
+  );
+
+  return { changed, failed, checked: SHELL_ASSETS.length };
+}
+
 self.addEventListener('message', (event) => {
-  if (event.data === 'skip-waiting') self.skipWaiting();
+  if (event.data === 'skip-waiting') {
+    self.skipWaiting();
+    return;
+  }
+  if (event.data === 'refresh-shell') {
+    const reply = (payload) => event.ports?.[0]?.postMessage(payload);
+    event.waitUntil(
+      refreshShell()
+        .then(reply)
+        .catch((error) => reply({ error: String(error?.message ?? error) })),
+    );
+  }
 });

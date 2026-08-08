@@ -12,6 +12,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
+  goToTab,
   launchBrowser,
   loadPlaywright,
   openApp,
@@ -190,6 +191,40 @@ test('progressive web app', { skip: playwright ? false : SKIP_REASON }, async (t
       await page.reload({ waitUntil: 'load' });
       await page.waitForSelector('.tabbar', { timeout: 20000 });
       await context.setOffline(false);
+    } finally {
+      await context.close();
+      await site.close();
+    }
+  });
+
+  // Waiting a reload for the new version is fine until you are standing there
+  // wanting it now — and it cannot be had by re-fetching sw.js alone, since a
+  // deploy that changes a view leaves the worker byte-identical.
+  await t.test('checking for updates finds a redeployed file and reloads onto it', async () => {
+    const site = await startMutableServer();
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+
+    try {
+      await page.goto(site.url, { waitUntil: 'load' });
+      await page.waitForSelector('.tabbar');
+      await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 20000 });
+
+      // Nothing has changed yet: the check must say so rather than reload.
+      await goToTab(page, 'more');
+      await page.click('[data-testid=check-update]');
+      await page.waitForSelector('.toast:has-text("latest version")', { timeout: 20000 });
+
+      // sw.js is deliberately left alone — only a view changes, which is the
+      // case `registration.update()` on its own cannot see.
+      await site.deploy('assets/app.css', (css) => `${css}\n.tabbar { outline-color: rgb(4, 5, 6); }\n`);
+
+      await page.click('[data-testid=check-update]');
+      await page.waitForFunction(
+        () => getComputedStyle(document.querySelector('.tabbar')).outlineColor === 'rgb(4, 5, 6)',
+        null,
+        { timeout: 25000 },
+      );
     } finally {
       await context.close();
       await site.close();

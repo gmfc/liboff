@@ -32,6 +32,9 @@ export function renderScan(container) {
   // of the book and a catalogue that could not be reached are different
   // problems, and only one of them is worth offering a retry for.
   let lookupStatus = FOUND;
+  // Whether a catalogue stayed silent while that verdict was reached. A miss
+  // with one service down is still a miss, but it is worth asking again.
+  let lookupPartial = false;
   // Held here rather than read off the inputs: choosing a shelf or a rating
   // re-renders the panel, and anything living only in the DOM would be lost.
   let draft = { shelf: DEFAULT_SHELF, rating: null, bomb: false, title: '', author: '' };
@@ -121,8 +124,9 @@ export function renderScan(container) {
     candidate = null;
     setMode('looking-up', { status: `Looking up ${formatIsbn(isbn)}…` });
 
-    const { status, book, sources } = await lookupIsbn(isbn, { refresh });
+    const { status, book, sources, partial } = await lookupIsbn(isbn, { refresh });
     lookupStatus = status;
+    lookupPartial = partial;
     candidate =
       status === FOUND
         ? { ...book, isbn, source: sources.join(' + ') }
@@ -324,7 +328,9 @@ export function renderScan(container) {
               ? store.state.online
                 ? 'The catalogues could not be reached just now. Try again, or add the details yourself.'
                 : 'Offline, so we could not look this up. Add the details now or edit later.'
-              : 'No catalogue entry for this ISBN — add the details yourself.',
+              : lookupPartial
+                ? 'Not in the catalogues that answered — one of them was unavailable. Add the details yourself, or try again.'
+                : 'No catalogue entry for this ISBN — add the details yourself.',
           ),
       found ? bookRow(preview, { trailing: h('span') }) : null,
       !found
@@ -334,7 +340,7 @@ export function renderScan(container) {
             h('p', { class: 'result-card__isbn' }, `ISBN ${formatIsbn(candidate.isbn)}`),
             // A failed lookup used to be final: the only way back was to scan
             // the book again. It is one request, so offer it.
-            lookupStatus === UNAVAILABLE && candidate.isbn
+            (lookupStatus === UNAVAILABLE || lookupPartial) && candidate.isbn
               ? h(
                   'button',
                   {
