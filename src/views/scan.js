@@ -63,10 +63,8 @@ export function renderScan(container) {
       session = await startScanner(video, {
         onResult: handleBarcode,
         onError: () => {},
-        onReady: ({ engine }) => {
-          setMode('scanning', {
-            status: engine === 'native' ? 'Point at the barcode' : 'Point at the barcode',
-          });
+        onReady: () => {
+          setMode('scanning', { status: 'Hold the barcode inside the frame' });
         },
       });
     } catch (error) {

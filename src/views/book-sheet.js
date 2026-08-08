@@ -33,6 +33,23 @@ export function showBookSheet(book, options = {}) {
 
   const content = h('div', { class: 'sheet__content' });
 
+  const previouslyFocused = document.activeElement;
+
+  const dialog = h(
+    'div',
+    {
+      class: 'sheet',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': book.title,
+      // Focusable so opening the sheet moves the reading position into it;
+      // without this a screen reader stays behind on the library grid.
+      tabindex: '-1',
+    },
+    h('div', { class: 'sheet__grip', 'aria-hidden': 'true' }),
+    content,
+  );
+
   const backdrop = h(
     'div',
     {
@@ -41,12 +58,7 @@ export function showBookSheet(book, options = {}) {
         if (event.target === backdrop) close();
       },
     },
-    h(
-      'div',
-      { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': book.title },
-      h('div', { class: 'sheet__grip', 'aria-hidden': 'true' }),
-      content,
-    ),
+    dialog,
   );
 
   function onKey(event) {
@@ -58,6 +70,10 @@ export function showBookSheet(book, options = {}) {
     backdrop.classList.add('is-leaving');
     setTimeout(() => backdrop.remove(), 200);
     openSheet = null;
+    // Hand focus back to whatever opened the sheet, usually the book's card.
+    if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) {
+      previouslyFocused.focus({ preventScroll: true });
+    }
   }
 
   async function patch(changes) {
@@ -307,6 +323,7 @@ export function showBookSheet(book, options = {}) {
   render();
   document.addEventListener('keydown', onKey);
   document.body.appendChild(backdrop);
+  dialog.focus({ preventScroll: true });
   openSheet = { close };
   return { close };
 }

@@ -37,7 +37,15 @@ function fold(value) {
 /** The text we match a search query against. */
 function haystack(book) {
   return fold(
-    [book.title, ...(book.authors ?? []), book.publisher, book.isbn, ...(book.tags ?? []), book.notes]
+    [
+      book.title,
+      ...(book.authors ?? []),
+      book.publisher,
+      book.isbn,
+      book.year,
+      ...(book.tags ?? []),
+      book.notes,
+    ]
       .filter(Boolean)
       .join(' '),
   );
@@ -46,12 +54,21 @@ function haystack(book) {
 /**
  * Every whitespace-separated term must appear somewhere in the record, so
  * "dahl fox" narrows rather than widens.
+ *
+ * A term made of digits also matches with its separators stripped: ISBNs are
+ * stored bare, but they are printed — and copied, and typed — with hyphens
+ * and spaces, and "978-0-14-032872-1" should find the book it belongs to.
  */
 export function matchesSearch(book, search) {
   const terms = fold(search).split(/\s+/).filter(Boolean);
   if (!terms.length) return true;
   const text = haystack(book);
-  return terms.every((term) => text.includes(term));
+  return terms.every((term) => {
+    if (text.includes(term)) return true;
+    if (!/^[0-9x][0-9x -]*$/.test(term)) return false;
+    const digits = term.replace(/[^0-9x]/g, '');
+    return digits.length >= 8 && text.includes(digits);
+  });
 }
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });

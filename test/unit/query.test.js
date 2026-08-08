@@ -61,6 +61,21 @@ test('search matches across title, author and tags, ignoring accents and case', 
   assert.ok(!matchesSearch(hobbit, 'solaris'));
 });
 
+test('an ISBN finds its book however it is punctuated', () => {
+  const book = makeBook({
+    title: 'Fantastic Mr. Fox',
+    authors: ['Roald Dahl'],
+    isbn: '9780140328721',
+    year: 1988,
+  });
+  assert.ok(matchesSearch(book, '9780140328721'), 'bare digits');
+  assert.ok(matchesSearch(book, '978-0-14-032872-1'), 'hyphenated, as printed on the copyright page');
+  assert.ok(matchesSearch(book, '9 780140 328721'), 'grouped, as printed under the barcode');
+  assert.ok(matchesSearch(book, '1988'), 'the year is searchable too');
+  assert.ok(!matchesSearch(book, '9780140328722'), 'a different ISBN must not match');
+  assert.ok(!matchesSearch(book, '12345'), 'a short number is not treated as an ISBN');
+});
+
 test('every search term must match, so extra words narrow the result', () => {
   const [hobbit] = library();
   assert.ok(matchesSearch(hobbit, 'hobbit tolkien'));
