@@ -99,11 +99,14 @@ export function cleanRating(value) {
 
 let idCounter = 0;
 
-/** Ids only need to be unique within one device's library. */
-export function newId() {
+/**
+ * Ids only need to be unique within one device's library. The prefix says what
+ * kind of thing it is, which makes a stray id in an export readable.
+ */
+export function newId(prefix = 'b') {
   idCounter += 1;
   const random = Math.random().toString(36).slice(2, 8);
-  return `b_${Date.now().toString(36)}_${idCounter.toString(36)}${random}`;
+  return `${prefix}_${Date.now().toString(36)}_${idCounter.toString(36)}${random}`;
 }
 
 /**

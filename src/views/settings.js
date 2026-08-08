@@ -67,10 +67,15 @@ export function renderSettings(container) {
       if (!file) return;
       try {
         const payload = parseImportFile(await file.text());
-        const result = mergeImport(store.state.books, payload);
-        await store.replaceLibrary(result.books);
+        const result = mergeImport(store.state.books, payload, {
+          collections: store.state.collections,
+        });
+        await store.replaceLibrary(result.books, result.collections);
+        const collectionNote = result.collectionsAdded
+          ? `, ${result.collectionsAdded} collection${result.collectionsAdded === 1 ? '' : 's'}`
+          : '';
         toast(
-          `Imported: ${result.added} added, ${result.updated} updated, ${result.skipped} unchanged.`,
+          `Imported: ${result.added} added, ${result.updated} updated, ${result.skipped} unchanged${collectionNote}.`,
           { duration: 4200 },
         );
       } catch (error) {
@@ -103,7 +108,11 @@ export function renderSettings(container) {
               type: 'button',
               class: 'btn btn--primary',
               onClick: () => {
-                download(`liboff-${stamp()}.json`, exportJson(store.state.books), 'application/json');
+                download(
+                  `liboff-${stamp()}.json`,
+                  exportJson(store.state.books, store.state.collections),
+                  'application/json',
+                );
                 toast('Library exported');
               },
             },
@@ -116,7 +125,11 @@ export function renderSettings(container) {
               type: 'button',
               class: 'btn btn--ghost',
               onClick: () => {
-                download(`liboff-${stamp()}.csv`, exportCsv(store.state.books), 'text/csv');
+                download(
+                  `liboff-${stamp()}.csv`,
+                  exportCsv(store.state.books, store.state.collections),
+                  'text/csv',
+                );
               },
             },
             'Export CSV',

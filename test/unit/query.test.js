@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { makeBook } from '../../src/lib/model.js';
 import {
+  MANUAL_SORT,
   countsByShelf,
   libraryStats,
   matchesSearch,
@@ -116,9 +117,45 @@ test('title sort ignores a leading article', () => {
   ]);
 });
 
+test('title sort breaks ties on the author, so editions do not shuffle', () => {
+  const editions = [
+    makeBook({ title: 'Ulysses', authors: ['Declan Kiberd'] }),
+    makeBook({ title: 'Ulysses', authors: ['James Joyce'] }),
+    makeBook({ title: 'Ulysses', authors: ['Hans Walter Gabler'] }),
+  ];
+  const order = () => sortBooks(editions, 'title-asc').map((b) => b.authors[0]);
+  assert.deepEqual(order(), ['Hans Walter Gabler', 'James Joyce', 'Declan Kiberd']);
+  assert.deepEqual(order(), order(), 'and the same order every time');
+});
+
+test('a book with no author still sorts, at the end of its title group', () => {
+  const books = [makeBook({ title: 'Ulysses' }), makeBook({ title: 'Ulysses', authors: ['Joyce'] })];
+  assert.deepEqual(
+    sortBooks(books, 'title-asc').map((b) => b.authors[0] ?? '—'),
+    ['Joyce', '—'],
+  );
+});
+
 test('author sort files by surname', () => {
   const sorted = sortBooks(library(), 'author-asc').map((b) => b.authors[0]);
   assert.deepEqual(sorted, ['Anon', 'Anon', 'Stanisław Lem', 'J.R.R. Tolkien', 'Zebra Writer']);
+});
+
+test('a surname particle files with the surname, the way a shelf does', () => {
+  const books = [
+    makeBook({ title: 'A', authors: ['Frank Herbert'] }),
+    makeBook({ title: 'B', authors: ['Ursula K. Le Guin'] }),
+    makeBook({ title: 'C', authors: ['John le Carré'] }),
+    makeBook({ title: 'D', authors: ['Ludwig van Beethoven'] }),
+    makeBook({ title: 'E', authors: ['Cher'] }),
+  ];
+  assert.deepEqual(sortBooks(books, 'author-asc').map((b) => b.authors[0]), [
+    'Ludwig van Beethoven', // van is not a particle here: files under B
+    'Cher', // a one-word name is its own file
+    'Frank Herbert',
+    'John le Carré', // le Carré, not Carré
+    'Ursula K. Le Guin', // Le Guin, not Guin
+  ]);
 });
 
 test('sortBooks does not mutate its input', () => {
@@ -139,6 +176,42 @@ test('selectBooks combines shelf, search and sort', () => {
     ['A Terrible Book', 'Dull But Finished'],
   );
   assert.equal(selectBooks(books, { rated: true }).length, 4, 'unrated is excluded');
+});
+
+test('an id list narrows the result, as a set or as an array', () => {
+  const books = library();
+  const ids = [books[1].id, books[0].id];
+  assert.deepEqual(
+    selectBooks(books, { ids: new Set(ids), sort: 'title-asc' }).map((b) => b.title),
+    ['The Hobbit', 'Solaris'],
+  );
+  assert.deepEqual(
+    selectBooks(books, { ids, sort: 'title-asc' }).map((b) => b.title),
+    ['The Hobbit', 'Solaris'],
+    'an array filters exactly as the set does',
+  );
+});
+
+test('the manual sort keeps the order of the id list it was given', () => {
+  const books = library();
+  const ids = [books[4].id, books[0].id, books[2].id];
+  assert.deepEqual(
+    selectBooks(books, { ids, sort: MANUAL_SORT }).map((b) => b.title),
+    ['Unread Thing', 'The Hobbit', 'A Terrible Book'],
+  );
+  assert.deepEqual(
+    selectBooks(books, { ids, sort: MANUAL_SORT, shelf: 'read' }).map((b) => b.title),
+    ['The Hobbit'],
+    'other filters still apply inside a manual order',
+  );
+});
+
+test('a manual sort with nothing to be manual about falls back', () => {
+  const books = library();
+  assert.deepEqual(
+    selectBooks(books, { sort: MANUAL_SORT }).map((b) => b.title),
+    selectBooks(books, {}).map((b) => b.title),
+  );
 });
 
 test('shelf counts cover every shelf plus the total', () => {

@@ -483,6 +483,14 @@ dd {
   border-radius: 999px;
 }
 
+/* Inside a collection this control sets that collection's own order, not the
+   library preference. It is tinted so the change of ownership is visible. */
+.select.is-scoped {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
 .summary {
   margin-bottom: 0.5rem;
   font-size: 0.78rem;
@@ -1484,4 +1492,256 @@ dd {
   .grid {
     grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
   }
+}
+
+/* ------------------------------------------------- tags and collections */
+
+.search-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.search-row .search {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-btn {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  color: var(--ink-2);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.filter-btn.is-on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.filter-pills[hidden] {
+  display: none;
+}
+
+.filter-pill {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  min-height: 1.9rem;
+  padding: 0.2rem 0.5rem 0.2rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--accent-soft);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.filter-pill__label {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.filter-pill__x {
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.tag-label {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.tag-label__hash {
+  opacity: 0.55;
+  margin-right: 0.05em;
+}
+
+/* Facet rows: name on the left, edit and delete parked on the right. */
+.facet-list {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.facet-row {
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.facet-row.is-on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.facet-row__main {
+  display: flex;
+  flex: 1;
+  gap: 0.5rem;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--tap);
+  padding: 0.4rem 0.7rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.facet-row__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.facet-row__action {
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  min-height: var(--tap);
+  color: var(--ink-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.facet-row__action--danger {
+  color: var(--danger);
+}
+
+.count-badge {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* Toggle chips: the collections a book is in, on its own page. */
+.chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.toggle-chip {
+  min-height: 2.2rem;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.toggle-chip.is-on {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.toggle-chip--add {
+  border-style: dashed;
+  color: var(--ink-3);
+}
+
+/* Tag editor */
+.tag-editor {
+  display: grid;
+  gap: 0.45rem;
+  width: 100%;
+}
+
+.tag-chips,
+.tag-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.tag-chips:empty,
+.tag-suggestions:empty {
+  display: none;
+}
+
+.tag-chip {
+  display: inline-flex;
+  gap: 0.15rem;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-2);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.tag-chip.is-on {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
+.tag-chip--suggestion {
+  border-style: dashed;
+  color: var(--ink-3);
+}
+
+.tag-chip__x {
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 0.55;
+}
+
+.tag-input {
+  min-height: 2.4rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .filter-btn.is-on,
+  :root:not([data-theme='light']) .toggle-chip.is-on {
+    color: #1a1611;
+  }
+}
+
+[data-theme='dark'] .filter-btn.is-on,
+[data-theme='dark'] .toggle-chip.is-on {
+  color: #1a1611;
 }
