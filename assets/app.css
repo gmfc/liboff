@@ -483,6 +483,14 @@ dd {
   border-radius: 999px;
 }
 
+/* Inside a collection this control sets that collection's own order, not the
+   library preference. It is tinted so the change of ownership is visible. */
+.select.is-scoped {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: transparent;
+}
+
 .summary {
   margin-bottom: 0.5rem;
   font-size: 0.78rem;

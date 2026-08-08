@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { makeBook } from '../../src/lib/model.js';
 import {
+  DEFAULT_COLLECTION_ORDER,
   addToCollection,
   booksInCollection,
   collectionsForBook,
@@ -11,6 +12,7 @@ import {
   pruneCollections,
   removeFromCollection,
   renameCollection,
+  setCollectionOrder,
   sortCollections,
   toggleInCollection,
 } from '../../src/lib/collections.js';
@@ -95,19 +97,63 @@ test('pruning leaves untouched collections identical, so nothing needless is wri
   assert.equal(pruneCollections(collections, books)[0], collections[0]);
 });
 
-test('booksInCollection resolves in the collection order, not the library order', () => {
+test('a collection is ordered by title, then author, unless told otherwise', () => {
+  assert.equal(makeCollection({ name: 'x' }).order, DEFAULT_COLLECTION_ORDER);
+  assert.equal(DEFAULT_COLLECTION_ORDER, 'title-asc');
+  assert.equal(
+    makeCollection({ name: 'x', order: 'nonsense' }).order,
+    DEFAULT_COLLECTION_ORDER,
+    'an unknown order falls back rather than sorting by nothing',
+  );
+  assert.equal(makeCollection({ name: 'x', order: 'manual' }).order, 'manual');
+  assert.equal(makeCollection({ name: 'x', order: 'author-asc' }).order, 'author-asc');
+});
+
+test('changing the order moves the clock; setting the same one does not', () => {
+  const collection = makeCollection({ name: 'x', updatedAt: '2020-01-01T00:00:00.000Z' });
+  assert.equal(setCollectionOrder(collection, collection.order), collection);
+  const next = setCollectionOrder(collection, 'manual');
+  assert.equal(next.order, 'manual');
+  assert.ok(next.updatedAt > collection.updatedAt);
+  assert.deepEqual(next.bookIds, collection.bookIds, 'the added order is kept, not discarded');
+});
+
+test('booksInCollection sorts by the order the collection remembers', () => {
+  const books = [
+    makeBook({ title: 'Beta', authors: ['Zoe Ash'], id: 'b1' }),
+    makeBook({ title: 'Gamma', authors: ['Ann Bell'], id: 'b2' }),
+    makeBook({ title: 'Alpha', authors: ['Mia Cole'], id: 'b3' }),
+  ];
+  const ids = ['b1', 'b2', 'b3'];
+
+  const byTitle = makeCollection({ name: 'x', bookIds: ids });
+  assert.deepEqual(booksInCollection(byTitle, books).map((b) => b.title), [
+    'Alpha',
+    'Beta',
+    'Gamma',
+  ]);
+
+  const byAuthor = makeCollection({ name: 'x', bookIds: ids, order: 'author-asc' });
+  assert.deepEqual(booksInCollection(byAuthor, books).map((b) => b.title), [
+    'Beta', // Ash
+    'Gamma', // Bell
+    'Alpha', // Cole
+  ]);
+});
+
+test('a manual collection keeps the order you added books in', () => {
   const books = [
     makeBook({ title: 'A', id: 'b1' }),
     makeBook({ title: 'B', id: 'b2' }),
     makeBook({ title: 'C', id: 'b3' }),
   ];
-  const collection = makeCollection({ name: 'x', bookIds: ['b3', 'b1'] });
+  const collection = makeCollection({ name: 'x', bookIds: ['b3', 'b1'], order: 'manual' });
   assert.deepEqual(booksInCollection(collection, books).map((b) => b.title), ['C', 'A']);
 });
 
 test('booksInCollection skips ids with no book rather than yielding holes', () => {
   const books = [makeBook({ title: 'A', id: 'b1' })];
-  const collection = makeCollection({ name: 'x', bookIds: ['ghost', 'b1'] });
+  const collection = makeCollection({ name: 'x', bookIds: ['ghost', 'b1'], order: 'manual' });
   assert.deepEqual(booksInCollection(collection, books).map((b) => b.title), ['A']);
 });
 

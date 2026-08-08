@@ -14,6 +14,7 @@ import {
   pruneCollections,
   removeFromCollection,
   renameCollection,
+  setCollectionOrder,
   sortCollections,
   toggleInCollection,
 } from './collections.js';
@@ -208,6 +209,19 @@ export async function editCollectionName(id, name) {
   const current = findCollectionById(id);
   if (!current) return null;
   const next = renameCollection(current, name);
+  if (next === current) return current;
+  return replaceCollection(next);
+}
+
+/**
+ * How the collection is ordered when you open it. Stored on the collection
+ * rather than as one global preference: the order that suits a reading list is
+ * not the order that suits a shelf of favourites.
+ */
+export async function editCollectionOrder(id, order) {
+  const current = findCollectionById(id);
+  if (!current) return null;
+  const next = setCollectionOrder(current, order);
   if (next === current) return current;
   return replaceCollection(next);
 }

@@ -26,7 +26,9 @@ build step and no dependencies.
   offered as you type, so a library does not end up with "scifi" and "sci-fi"
   both meaning the same thing.
 - **Collect** books into groups you name yourself: a book club, a series, the
-  ones you keep lending out. A book can be in as many as you like.
+  ones you keep lending out. A book can be in as many as you like, and each
+  collection keeps its own order — by title and author, or the order you put
+  them in when the sequence is the point.
 - **Find** anything by title, author, tag, note, year or ISBN; filter by shelf,
   collection and tag together; sort by rating, title, author or date.
 - **See** where your taste actually sits: rating distribution, average, pages
@@ -89,6 +91,14 @@ carrying it, so it is counted on demand and never stored. A collection is a
 record of its own, because an empty collection you just made is a real thing,
 and the order you put books in is yours to choose — so membership lives on the
 collection as an ordered list, not on the book as a set of names.
+
+A collection also stores how it wants to be read. Books sort by title and then
+author by default, which is how a shelf is usually kept, but a collection can
+be set to any of the library's sorts or to the order you added things —
+"read these in this order" is a real kind of list, and no comparator over the
+books can express it. While a collection is open, the sort control belongs to
+it rather than to the library, so setting "Book club" to file by author leaves
+everything else alone.
 
 **Updates.** The shell is precached so the app opens offline, then revalidated
 in the background, so a redeployed file reaches an installed app on the visit

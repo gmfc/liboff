@@ -17,6 +17,15 @@ export const SORTS = [
 
 export const DEFAULT_SORT = 'added-desc';
 
+export const SORT_IDS = SORTS.map((sort) => sort.id);
+
+/**
+ * Not a comparator: "manual" means the order of the id list handed to
+ * `selectBooks`, which is how a collection keeps the sequence you put its
+ * books in. It is only meaningful when such a list is supplied.
+ */
+export const MANUAL_SORT = 'manual';
+
 /**
  * Letters with no canonical decomposition, which NFD therefore cannot strip.
  * Without these, searching "Stanislaw Lem" would not find "Stanisław Lem".
@@ -79,11 +88,24 @@ function sortableTitle(book) {
   return fold(book.title).replace(/^(the|a|an)\s+/, '');
 }
 
+/**
+ * Particles that belong to the surname when a shelf is filed, so Ursula K. Le
+ * Guin lands under L rather than under G.
+ *
+ * Dutch and German particles are deliberately absent: cataloguing practice
+ * files those under the main name, which is where "Ludwig van Beethoven"
+ * already goes without any help from here.
+ */
+const SURNAME_PARTICLES = new Set(['le', 'la', 'les', 'du', 'des', 'del', 'della', 'di', 'lo']);
+
 function sortableAuthor(book) {
   const author = book.authors?.[0];
   if (!author) return '\uffff'; // unknown authors sort last
-  const parts = fold(author).split(' ');
-  return parts.length > 1 ? `${parts[parts.length - 1]} ${parts.slice(0, -1).join(' ')}` : parts[0];
+  const parts = fold(author).split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] ?? '';
+  let start = parts.length - 1;
+  while (start > 0 && SURNAME_PARTICLES.has(parts[start - 1])) start -= 1;
+  return `${parts.slice(start).join(' ')} ${parts.slice(0, start).join(' ')}`.trim();
 }
 
 /** Unrated books sort after rated ones in both directions. */
@@ -103,7 +125,13 @@ const COMPARATORS = {
   'added-desc': (a, b) => String(b.addedAt).localeCompare(String(a.addedAt)),
   'rank-desc': byRank('desc'),
   'rank-asc': byRank('asc'),
-  'title-asc': (a, b) => collator.compare(sortableTitle(a), sortableTitle(b)),
+  // Title, then author: two books can share a title, and a shelf that puts the
+  // three copies of "Ulysses" in an order that changes between renders is not
+  // sorted, it is merely shuffled.
+  'title-asc': (a, b) => {
+    const cmp = collator.compare(sortableTitle(a), sortableTitle(b));
+    return cmp !== 0 ? cmp : collator.compare(sortableAuthor(a), sortableAuthor(b));
+  },
   'author-asc': (a, b) => {
     const cmp = collator.compare(sortableAuthor(a), sortableAuthor(b));
     return cmp !== 0 ? cmp : collator.compare(sortableTitle(a), sortableTitle(b));
@@ -121,23 +149,35 @@ export function sortBooks(books, sortId = DEFAULT_SORT) {
   return [...books].sort(comparator);
 }
 
+/** Order by position in `ids`, for the sequence a collection remembers. */
+function byGivenOrder(ids) {
+  const rank = new Map(ids.map((id, index) => [id, index]));
+  return (a, b) => (rank.get(a.id) ?? Infinity) - (rank.get(b.id) ?? Infinity);
+}
+
 /**
  * @param {object[]} books
  * @param {{shelf?: string, search?: string, sort?: string, rated?: boolean,
- *          tag?: string|null, ids?: Set<string>|null}} options
+ *          tag?: string|null, ids?: Set<string>|string[]|null}} options
  *        `shelf` of 'all' (or omitted) keeps every shelf. `ids` restricts the
  *        result to a set of book ids — how a collection filters, kept as a
- *        plain set so this module needs to know nothing about collections.
- *        Every filter combines: they narrow, they do not replace each other.
+ *        plain set or array so this module needs to know nothing about
+ *        collections. Pass an array with `sort: MANUAL_SORT` to keep that
+ *        array's own order. Every filter combines: they narrow, they do not
+ *        replace each other.
  */
 export function selectBooks(books, options = {}) {
   const { shelf = 'all', search = '', sort = DEFAULT_SORT, rated, tag = null, ids = null } = options;
+  const idSet = ids === null ? null : ids instanceof Set ? ids : new Set(ids);
   let result = books;
   if (shelf && shelf !== 'all') result = result.filter((book) => book.shelf === shelf);
-  if (ids) result = result.filter((book) => ids.has(book.id));
+  if (idSet) result = result.filter((book) => idSet.has(book.id));
   if (tag) result = result.filter((book) => bookHasTag(book, tag));
   if (rated === true) result = result.filter(isRated);
   if (search) result = result.filter((book) => matchesSearch(book, search));
+  // A manual sort with nothing to be manual about falls back rather than
+  // returning an arbitrary order.
+  if (sort === MANUAL_SORT && Array.isArray(ids)) return [...result].sort(byGivenOrder(ids));
   return sortBooks(result, sort);
 }
 

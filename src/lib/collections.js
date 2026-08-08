@@ -12,9 +12,30 @@
  * made and are about to fill, and the order you put books in is yours to
  * choose. Membership therefore lives on the collection as an ordered list of
  * book ids, not on the book as an unordered set of names.
+ *
+ * Each collection also remembers how it wants to be read — by title, by
+ * author, or in the order you added things — so opening "Book club" and
+ * opening "Read these in order" do not have to mean the same thing.
  */
 
+import { MANUAL_SORT, SORTS, SORT_IDS, selectBooks } from './query.js';
 import { newId } from './model.js';
+
+/**
+ * How a collection is ordered when you open it. Every library sort, plus the
+ * order you added the books in — which no comparator can express, because it
+ * is not a property of the books at all.
+ */
+export const COLLECTION_ORDERS = [{ id: MANUAL_SORT, label: 'Order added' }, ...SORTS];
+
+/** By title, then author: the order a shelf of books is usually kept in. */
+export const DEFAULT_COLLECTION_ORDER = 'title-asc';
+
+const ORDER_IDS = new Set([MANUAL_SORT, ...SORT_IDS]);
+
+function cleanOrder(value) {
+  return ORDER_IDS.has(value) ? value : DEFAULT_COLLECTION_ORDER;
+}
 
 function cleanName(value) {
   return String(value ?? '')
@@ -49,8 +70,10 @@ export function makeCollection(input = {}) {
     name: cleanName(input.name) || 'Untitled collection',
     description: cleanName(input.description).slice(0, 400),
     // Order is meaningful: it is the order you added them in, and a
-    // collection like "read these in this order" depends on it.
+    // collection like "read these in this order" depends on it — which is
+    // why the list is kept even when `order` is currently by title.
     bookIds: cleanIds(input.bookIds),
+    order: cleanOrder(input.order),
     createdAt: cleanTimestamp(input.createdAt) ?? now,
     // Preserved rather than re-stamped, for the same reason as books: this is
     // what decides which copy survives a merge.
@@ -88,6 +111,12 @@ export function renameCollection(collection, name) {
   return { ...collection, name: next, updatedAt: new Date().toISOString() };
 }
 
+export function setCollectionOrder(collection, order) {
+  const next = cleanOrder(order);
+  if (next === collection.order) return collection;
+  return { ...collection, order: next, updatedAt: new Date().toISOString() };
+}
+
 export function isInCollection(collection, bookId) {
   return Boolean(collection?.bookIds.includes(bookId));
 }
@@ -111,12 +140,12 @@ export function pruneCollections(collections, books) {
 
 /**
  * The books of a collection, in the collection's own order rather than any
- * sort the library happens to be using.
+ * sort the library happens to be using. Ids with no book are skipped rather
+ * than yielding holes.
  */
 export function booksInCollection(collection, books) {
   if (!collection) return [];
-  const byId = new Map(books.map((book) => [book.id, book]));
-  return collection.bookIds.map((id) => byId.get(id)).filter(Boolean);
+  return selectBooks(books, { sort: collection.order, ids: collection.bookIds });
 }
 
 export function findCollection(collections, id) {

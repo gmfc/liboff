@@ -105,6 +105,71 @@ test('tags and collections', { skip: playwright ? false : SKIP_REASON }, async (
     await context.close();
   });
 
+  // Ordering is per collection: the sort control changes owner while one is
+  // open, which is the part worth driving through the interface.
+  await t.test('a collection is ordered by title, and remembers being told otherwise', async () => {
+    const { context, page } = await openApp(browser, server.origin);
+    const books = await seed(page);
+    // Deliberately not alphabetical, so a title order cannot pass by accident.
+    await page.evaluate(async (ids) => {
+      const store = await import('/src/lib/store.js');
+      await store.createCollection('Everything', ids);
+    }, [books[2].id, books[0].id, books[3].id, books[1].id]);
+
+    const titles = () => page.$$eval('.card__title', (n) => n.map((x) => x.textContent));
+
+    await page.click('[data-testid=open-filters]');
+    await page.waitForSelector('[data-testid=collection-row]');
+    await page.click('[data-testid=collection-row] [data-collection]');
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid=book-card]').length === 4);
+
+    assert.deepEqual(
+      await titles(),
+      ['Dune', 'The Hobbit', 'Piranesi', 'Solaris'],
+      'by title, with the article ignored',
+    );
+    assert.equal(await page.inputValue('[data-testid=library-sort]'), 'title-asc');
+
+    await page.selectOption('[data-testid=library-sort]', 'author-asc');
+    await page.waitForFunction(
+      () => document.querySelector('.card__title')?.textContent === 'Piranesi',
+    );
+    assert.deepEqual(await titles(), ['Piranesi', 'Dune', 'Solaris', 'The Hobbit'], 'by surname');
+
+    // The order you added them in is still there to go back to.
+    await page.selectOption('[data-testid=library-sort]', 'manual');
+    await page.waitForFunction(
+      () => document.querySelector('.card__title')?.textContent === 'Solaris',
+    );
+    assert.deepEqual(await titles(), ['Solaris', 'The Hobbit', 'Piranesi', 'Dune']);
+
+    await page.selectOption('[data-testid=library-sort]', 'author-asc');
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForSelector('[data-testid=book-card]');
+    await page.click('[data-testid=open-filters]');
+    await page.waitForSelector('[data-testid=collection-row]');
+    await page.click('[data-testid=collection-row] [data-collection]');
+    await page.waitForFunction(
+      () => document.querySelector('.card__title')?.textContent === 'Piranesi',
+    );
+    assert.deepEqual(await titles(), ['Piranesi', 'Dune', 'Solaris', 'The Hobbit'], 'across a reload');
+
+    // Leaving the collection hands the control back to the library preference,
+    // and the collection keeps the order it was given.
+    await page.click('[data-testid=filter-pill]');
+    await page.waitForFunction(
+      async () => (await import('/src/lib/store.js')).state.collectionId === null,
+    );
+    const after = await readStore(page, async () => {
+      const store = await import('/src/lib/store.js');
+      return { sort: store.state.sort, order: store.state.collections[0].order };
+    });
+    assert.equal(after.sort, 'added-desc', 'the library preference was never touched');
+    assert.equal(after.order, 'author-asc');
+    assert.equal(await page.inputValue('[data-testid=library-sort]'), 'added-desc');
+    await context.close();
+  });
+
   await t.test('a tag is added in one tap and suggested from the rest of the library', async () => {
     const { context, page } = await openApp(browser, server.origin);
     await seed(page);

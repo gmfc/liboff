@@ -10,7 +10,7 @@
 import { debounce, h, icon, mount } from '../ui/dom.js';
 import { bookCard } from '../ui/book-card.js';
 import { collectionIcon, filterPill, tagLabel } from '../ui/chips.js';
-import { findCollection } from '../lib/collections.js';
+import { COLLECTION_ORDERS, findCollection } from '../lib/collections.js';
 import { SHELVES } from '../lib/model.js';
 import { SORTS, countsByShelf, selectBooks } from '../lib/query.js';
 import * as store from '../lib/store.js';
@@ -30,16 +30,29 @@ export function renderLibrary(container) {
     onInput: debounce((event) => store.setState({ search: event.target.value }), 180),
   });
 
+  /** The collection on screen, if any — it owns the sort while it is open. */
+  function activeCollection() {
+    return findCollection(store.state.collections, store.state.collectionId);
+  }
+
+  /**
+   * One control, two owners. With no collection open it sets your library-wide
+   * preference; inside a collection it sets that collection's own order and
+   * stays there, so "Book club" can be by author while everything else is by
+   * date added.
+   */
   const sortSelect = h(
     'select',
     {
       class: 'select',
-      'aria-label': 'Sort books',
-      onChange: (event) => store.setPreference('sort', event.target.value),
+      dataset: { testid: 'library-sort' },
+      onChange: (event) => {
+        const collection = activeCollection();
+        if (collection) store.editCollectionOrder(collection.id, event.target.value);
+        else store.setPreference('sort', event.target.value);
+      },
     },
-    ...SORTS.map((sort) =>
-      h('option', { value: sort.id, selected: store.state.sort === sort.id }, sort.label),
-    ),
+    ...SORTS.map((sort) => h('option', { value: sort.id }, sort.label)),
   );
 
   const chipBar = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Shelves' });
@@ -174,15 +187,36 @@ export function renderLibrary(container) {
     );
   }
 
+  /** Rebuild the options only when the choice on offer actually changes. */
+  function renderSort() {
+    const collection = activeCollection();
+    const options = collection ? COLLECTION_ORDERS : SORTS;
+    const signature = options.map((option) => option.id).join();
+    if (sortSelect.dataset.options !== signature) {
+      sortSelect.dataset.options = signature;
+      mount(sortSelect, ...options.map((o) => h('option', { value: o.id }, o.label)));
+    }
+    sortSelect.setAttribute(
+      'aria-label',
+      collection ? `Order books in ${collection.name}` : 'Sort books',
+    );
+    sortSelect.classList.toggle('is-scoped', Boolean(collection));
+    const value = collection ? collection.order : store.state.sort;
+    if (sortSelect.value !== value) sortSelect.value = value;
+  }
+
   function renderGrid() {
-    const collection = findCollection(store.state.collections, store.state.collectionId);
+    const collection = activeCollection();
     const books = selectBooks(store.state.books, {
       shelf: store.state.shelf,
       search: store.state.search,
-      sort: store.state.sort,
+      // A collection carries its own order; the library preference applies
+      // everywhere else.
+      sort: collection ? collection.order : store.state.sort,
       tag: store.state.tag,
-      // A collection filters by membership; the sort still applies within it.
-      ids: collection ? new Set(collection.bookIds) : null,
+      // Filters by membership, and — passed as the ordered list it is — can
+      // also supply the order the books were added in.
+      ids: collection ? collection.bookIds : null,
     });
 
     summary.textContent = books.length
@@ -207,10 +241,10 @@ export function renderLibrary(container) {
   }
 
   function renderAll() {
-    if (sortSelect.value !== store.state.sort) sortSelect.value = store.state.sort;
     if (document.activeElement !== searchInput && searchInput.value !== store.state.search) {
       searchInput.value = store.state.search;
     }
+    renderSort();
     renderChips();
     renderPills();
     renderGrid();
