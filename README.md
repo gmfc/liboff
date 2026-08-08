@@ -122,10 +122,17 @@ invisible until the app is already broken in someone's browser.
 
 ## Deploying
 
-Push to `main` and the Pages workflow publishes the repository as-is. It turns
-Pages on itself the first time it runs, so there is no settings step — but
-note that **Pages on a private repository needs a paid GitHub plan**. On a free
-plan the repository has to be public for the site to publish.
+Pages needs switching on once, by hand: **Settings → Pages → Source: GitHub
+Actions**. After that, every push to `main` publishes the repository as-is.
+
+Two things that are easy to lose an afternoon to:
+
+- The workflow token cannot do this for you. `actions/configure-pages` has an
+  `enablement` option, but creating a Pages site needs repository-admin rights
+  that `GITHUB_TOKEN` does not have, so it fails with "Resource not accessible
+  by integration".
+- **Pages on a private repository needs a paid GitHub plan.** On a free plan
+  the repository has to be public for the site to publish at all.
 
 For any other host, upload `index.html`, `manifest.webmanifest`, `sw.js`,
 `assets/`, `src/` and `vendor/`. Paths are relative throughout, so serving from
