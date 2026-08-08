@@ -63,29 +63,38 @@ export async function launchBrowser(playwright) {
   }
 }
 
+/** Exactly what the Pages workflow uploads. */
+const DEPLOYED = ['index.html', 'manifest.webmanifest', 'sw.js', 'assets', 'src', 'vendor'];
+
 /**
  * Serves a throwaway copy of the site on an ephemeral port, so a test can
  * change a deployed file and observe what the app does about it.
+ *
+ * `basePath` puts the site in a subdirectory, the shape GitHub Pages serves a
+ * project site in.
  */
-export async function startMutableServer() {
-  const dir = await mkdtemp(join(tmpdir(), 'liboff-deploy-'));
-  for (const entry of ['index.html', 'manifest.webmanifest', 'sw.js', 'assets', 'src', 'vendor']) {
-    await cp(join(ROOT, entry), join(dir, entry), { recursive: true });
+export async function startMutableServer({ basePath = '' } = {}) {
+  const root = await mkdtemp(join(tmpdir(), 'liboff-deploy-'));
+  const siteDir = basePath ? join(root, basePath) : root;
+  for (const entry of DEPLOYED) {
+    await cp(join(ROOT, entry), join(siteDir, entry), { recursive: true });
   }
-  const server = createStaticServer(dir);
+  const server = createStaticServer(root);
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   const { port } = server.address();
+  const origin = `http://127.0.0.1:${port}`;
   return {
-    dir,
-    origin: `http://127.0.0.1:${port}`,
+    origin,
+    /** The URL the app is actually served from. */
+    url: basePath ? `${origin}/${basePath}/` : `${origin}/`,
     /** Rewrite a file as a deploy would. */
     async deploy(relativePath, transform) {
-      const target = join(dir, relativePath);
+      const target = join(siteDir, relativePath);
       await writeFile(target, transform(await readFile(target, 'utf8')));
     },
     async close() {
       await new Promise((done) => server.close(done));
-      await rm(dir, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     },
   };
 }

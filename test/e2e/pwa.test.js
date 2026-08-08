@@ -159,7 +159,7 @@ test('progressive web app', { skip: playwright ? false : SKIP_REASON }, async (t
       const outline = () =>
         page.evaluate(() => getComputedStyle(document.querySelector('.tabbar')).outlineColor);
 
-      await page.goto(`${site.origin}/index.html`, { waitUntil: 'load' });
+      await page.goto(site.url, { waitUntil: 'load' });
       await page.waitForSelector('.tabbar');
       await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 20000 });
       assert.notEqual(await outline(), 'rgb(1, 2, 3)', 'sanity: the marker is not there yet');
@@ -183,6 +183,50 @@ test('progressive web app', { skip: playwright ? false : SKIP_REASON }, async (t
       await page.reload({ waitUntil: 'load' });
       await page.waitForSelector('.tabbar', { timeout: 20000 });
       await context.setOffline(false);
+    } finally {
+      await context.close();
+      await site.close();
+    }
+  });
+
+  // GitHub Pages serves a project site from /<repo>/, not from the domain
+  // root. Every path in this app is relative so that works, but "every" is the
+  // sort of claim that quietly stops being true.
+  await t.test('the app works served from a subdirectory, as Pages serves it', async () => {
+    const site = await startMutableServer({ basePath: 'liboff' });
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+
+    try {
+      await page.goto(site.url, { waitUntil: 'load' });
+      await page.waitForSelector('.tabbar', { timeout: 15000 });
+      await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, {
+        timeout: 20000,
+      });
+
+      const scope = await page.evaluate(async () => (await navigator.serviceWorker.ready).scope);
+      assert.equal(scope, site.url, 'the worker must scope to the subdirectory, not the domain root');
+
+      for (const path of ['manifest.webmanifest', 'assets/icons/icon-192.png', 'assets/app.css']) {
+        const response = await page.request.get(`${site.url}${path}`);
+        assert.equal(response.status(), 200, `${path} did not resolve under the subpath`);
+      }
+
+      await page.evaluate(async () => {
+        const store = await import('./src/lib/store.js');
+        await store.addBook({ title: 'Subpath Book', authors: ['Anon'], shelf: 'read', rating: 5 });
+      });
+      await page.waitForFunction(() => document.querySelectorAll('[data-testid=book-card]').length === 1);
+
+      await context.setOffline(true);
+      await page.reload({ waitUntil: 'load' });
+      await page.waitForSelector('.tabbar', { timeout: 20000 });
+      assert.equal(await page.textContent('.card__title'), 'Subpath Book');
+      await context.setOffline(false);
+
+      assert.deepEqual(errors, []);
     } finally {
       await context.close();
       await site.close();
