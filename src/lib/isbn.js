@@ -58,6 +58,20 @@ export function isbn10To13(input) {
 }
 
 /**
+ * Narrow an ISBN-13 back to its ISBN-10 form, which catalogues still index
+ * anything printed before 2007 under.
+ *
+ * Returns null for a 979 prefix: those were minted after the changeover and
+ * have no ISBN-10 at all, so there is nothing to look up.
+ */
+export function isbn13To10(input) {
+  const value = cleanIsbn(input);
+  if (!isValidIsbn13(value) || !value.startsWith('978')) return null;
+  const body = value.slice(3, 12);
+  return body + isbn10CheckDigit(body);
+}
+
+/**
  * Normalise any accepted form to a 13-digit ISBN, the single key we store
  * books under. Returns null when the input is not a usable ISBN.
  */

@@ -16,7 +16,7 @@ import { bookRow } from '../ui/book-card.js';
 import { ratingInput } from '../ui/rating.js';
 import { SHELVES, DEFAULT_SHELF, makeBook } from '../lib/model.js';
 import { formatIsbn, isbnFromBarcode, toIsbn13 } from '../lib/isbn.js';
-import { lookupIsbn, searchByText } from '../lib/metadata.js';
+import { FOUND, UNAVAILABLE, lookupIsbn, searchByText } from '../lib/metadata.js';
 import * as store from '../lib/store.js';
 import { cameraSupported, decodeImageFile, describeCameraError, startScanner } from '../scanner/camera.js';
 import { showBookSheet } from './book-sheet.js';
@@ -28,6 +28,10 @@ export function renderScan(container) {
   let statusText = '';
   let candidate = null; // metadata awaiting confirmation
   let duplicate = null; // book already in the library
+  // Why the candidate is blank, when it is: a catalogue that has never heard
+  // of the book and a catalogue that could not be reached are different
+  // problems, and only one of them is worth offering a retry for.
+  let lookupStatus = FOUND;
   // Held here rather than read off the inputs: choosing a shelf or a rating
   // re-renders the panel, and anything living only in the DOM would be lost.
   let draft = { shelf: DEFAULT_SHELF, rating: null, bomb: false, title: '', author: '' };
@@ -94,7 +98,18 @@ export function renderScan(container) {
 
   /* ------------------------------------------------------------- lookup UI */
 
-  async function presentIsbn(isbn) {
+  const blankCandidate = (isbn) => ({
+    isbn,
+    title: '',
+    authors: [],
+    publisher: '',
+    year: null,
+    pages: null,
+    coverUrl: '',
+    source: null,
+  });
+
+  async function presentIsbn(isbn, { refresh = false } = {}) {
     const existing = store.findByIsbn(isbn);
     if (existing) {
       duplicate = existing;
@@ -106,11 +121,15 @@ export function renderScan(container) {
     candidate = null;
     setMode('looking-up', { status: `Looking up ${formatIsbn(isbn)}…` });
 
-    const metadata = await lookupIsbn(isbn);
-    candidate = metadata?.title
-      ? { ...metadata, isbn }
-      : { isbn, title: '', authors: [], publisher: '', year: null, pages: null, coverUrl: '', source: null };
-    draft = { shelf: DEFAULT_SHELF, rating: null, bomb: false, title: '', author: '' };
+    const { status, book, sources } = await lookupIsbn(isbn, { refresh });
+    lookupStatus = status;
+    candidate =
+      status === FOUND
+        ? { ...book, isbn, source: sources.join(' + ') }
+        : blankCandidate(isbn);
+    // Typed-in details survive a retry: it would be rude to make someone key
+    // the title twice because the second attempt also failed.
+    if (!refresh) draft = { shelf: DEFAULT_SHELF, rating: null, bomb: false, title: '', author: '' };
     setMode('result');
   }
 
@@ -300,10 +319,12 @@ export function renderScan(container) {
         ? h('p', { class: 'result-card__flag' }, icon('check', { size: 16 }), `Found via ${candidate.source}`)
         : h(
             'p',
-            { class: 'result-card__flag result-card__flag--warn' },
-            store.state.online
-              ? 'No catalogue entry for this ISBN — add the details yourself.'
-              : 'Offline, so we could not look this up. Add the details now or edit later.',
+            { class: 'result-card__flag result-card__flag--warn', dataset: { status: lookupStatus } },
+            lookupStatus === UNAVAILABLE
+              ? store.state.online
+                ? 'The catalogues could not be reached just now. Try again, or add the details yourself.'
+                : 'Offline, so we could not look this up. Add the details now or edit later.'
+              : 'No catalogue entry for this ISBN — add the details yourself.',
           ),
       found ? bookRow(preview, { trailing: h('span') }) : null,
       !found
@@ -311,6 +332,21 @@ export function renderScan(container) {
             'div',
             { class: 'form-stack' },
             h('p', { class: 'result-card__isbn' }, `ISBN ${formatIsbn(candidate.isbn)}`),
+            // A failed lookup used to be final: the only way back was to scan
+            // the book again. It is one request, so offer it.
+            lookupStatus === UNAVAILABLE && candidate.isbn
+              ? h(
+                  'button',
+                  {
+                    type: 'button',
+                    class: 'btn btn--ghost',
+                    dataset: { testid: 'retry-lookup' },
+                    onClick: () => presentIsbn(candidate.isbn, { refresh: true }),
+                  },
+                  icon('refresh', { size: 18 }),
+                  'Try the lookup again',
+                )
+              : null,
             titleInput,
             authorInput,
           )
@@ -447,7 +483,7 @@ export function renderScan(container) {
   const searchInput = h('input', {
     class: 'input',
     type: 'search',
-    placeholder: 'Title or author',
+    placeholder: 'Title, author or ISBN',
     'aria-label': 'Search the online catalogue',
     onInput: debounce(async (event) => {
       const query = event.target.value.trim();
@@ -487,7 +523,11 @@ export function renderScan(container) {
         'section',
         { class: 'section' },
         h('h2', { class: 'section__title' }, 'No barcode?'),
-        h('p', { class: 'section__hint' }, 'Search the Open Library catalogue by title or author.'),
+        h(
+          'p',
+          { class: 'section__hint' },
+          'Search the Open Library catalogue by title or author. An ISBN pasted here is looked up directly.',
+        ),
         searchInput,
         results,
       ),
