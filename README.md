@@ -122,10 +122,15 @@ invisible until the app is already broken in someone's browser.
 
 ## Deploying
 
-Push to `main` and the Pages workflow publishes the repository as-is. For any
-other host, upload `index.html`, `manifest.webmanifest`, `sw.js`, `assets/`,
-`src/` and `vendor/`. Paths are relative throughout, so serving from a
-subdirectory works without configuration.
+Push to `main` and the Pages workflow publishes the repository as-is. It turns
+Pages on itself the first time it runs, so there is no settings step — but
+note that **Pages on a private repository needs a paid GitHub plan**. On a free
+plan the repository has to be public for the site to publish.
+
+For any other host, upload `index.html`, `manifest.webmanifest`, `sw.js`,
+`assets/`, `src/` and `vendor/`. Paths are relative throughout, so serving from
+a subdirectory works without configuration, and the browser tests cover that
+case.
 
 ## Licence
 
