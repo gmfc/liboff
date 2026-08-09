@@ -10,9 +10,9 @@
 import { debounce, h, icon, mount } from '../ui/dom.js';
 import { bookCard } from '../ui/book-card.js';
 import { collectionIcon, filterPill, tagLabel } from '../ui/chips.js';
-import { COLLECTION_ORDERS, findCollection } from '../lib/collections.js';
+import { findCollection, orderLabel } from '../lib/collections.js';
 import { SHELVES } from '../lib/model.js';
-import { SORTS, countsByShelf, selectBooks } from '../lib/query.js';
+import { countsByShelf, selectBooks } from '../lib/query.js';
 import * as store from '../lib/store.js';
 import { showBookSheet } from './book-sheet.js';
 import { showFilterSheet } from './filter-sheet.js';
@@ -34,26 +34,6 @@ export function renderLibrary(container) {
   function activeCollection() {
     return findCollection(store.state.collections, store.state.collectionId);
   }
-
-  /**
-   * One control, two owners. With no collection open it sets your library-wide
-   * preference; inside a collection it sets that collection's own order and
-   * stays there, so "Book club" can be by author while everything else is by
-   * date added.
-   */
-  const sortSelect = h(
-    'select',
-    {
-      class: 'select',
-      dataset: { testid: 'library-sort' },
-      onChange: (event) => {
-        const collection = activeCollection();
-        if (collection) store.editCollectionOrder(collection.id, event.target.value);
-        else store.setPreference('sort', event.target.value);
-      },
-    },
-    ...SORTS.map((sort) => h('option', { value: sort.id }, sort.label)),
-  );
 
   const chipBar = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Shelves' });
   const grid = h('div', { class: 'grid', dataset: { testid: 'library-grid' } });
@@ -187,24 +167,6 @@ export function renderLibrary(container) {
     );
   }
 
-  /** Rebuild the options only when the choice on offer actually changes. */
-  function renderSort() {
-    const collection = activeCollection();
-    const options = collection ? COLLECTION_ORDERS : SORTS;
-    const signature = options.map((option) => option.id).join();
-    if (sortSelect.dataset.options !== signature) {
-      sortSelect.dataset.options = signature;
-      mount(sortSelect, ...options.map((o) => h('option', { value: o.id }, o.label)));
-    }
-    sortSelect.setAttribute(
-      'aria-label',
-      collection ? `Order books in ${collection.name}` : 'Sort books',
-    );
-    sortSelect.classList.toggle('is-scoped', Boolean(collection));
-    const value = collection ? collection.order : store.state.sort;
-    if (sortSelect.value !== value) sortSelect.value = value;
-  }
-
   function renderGrid() {
     const collection = activeCollection();
     const books = selectBooks(store.state.books, {
@@ -219,8 +181,12 @@ export function renderLibrary(container) {
       ids: collection ? collection.bookIds : null,
     });
 
+    // The order used to be a control you could see. Now that it lives in the
+    // sheet, the summary line is where it stays visible — otherwise a library
+    // sorted by rating looks like a library in no order at all.
+    const order = orderLabel(collection ? collection.order : store.state.sort);
     summary.textContent = books.length
-      ? `${books.length} book${books.length === 1 ? '' : 's'}`
+      ? `${books.length} book${books.length === 1 ? '' : 's'} · ${order}`
       : '';
 
     if (!books.length) {
@@ -244,7 +210,6 @@ export function renderLibrary(container) {
     if (document.activeElement !== searchInput && searchInput.value !== store.state.search) {
       searchInput.value = store.state.search;
     }
-    renderSort();
     renderChips();
     renderPills();
     renderGrid();
@@ -271,12 +236,7 @@ export function renderLibrary(container) {
           ),
           filterButton,
         ),
-        h(
-          'div',
-          { class: 'library__filters' },
-          chipBar,
-          h('div', { class: 'select-wrap' }, sortSelect),
-        ),
+        chipBar,
         pills,
       ),
       summary,

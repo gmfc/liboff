@@ -78,6 +78,65 @@ test('liboff app', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await context.close();
   });
 
+  /**
+   * The tab bar sits on the bottom edge, whatever is or is not on screen.
+   *
+   * It used to be `position: fixed; bottom: 0` over a scrolling document,
+   * which anchors it to the *layout* viewport — on a phone that is not the
+   * rectangle you can see, and the bar ends up floating above a strip of
+   * nothing. Headless Chromium has neither collapsing toolbars nor a home
+   * indicator, so it cannot reproduce that gap directly; what it can hold on
+   * to is the structure that removes the possibility. The document not
+   * scrolling is the load-bearing assertion here — it fails on the old
+   * layout, where the document was the scroller.
+   */
+  await t.test('the tab bar stays on the bottom edge, with content or without', async () => {
+    const { context, page } = await openApp(browser, server.origin);
+
+    const measure = () =>
+      page.evaluate(() => {
+        const bar = document.querySelector('.tabbar').getBoundingClientRect();
+        const outlet = document.querySelector('.outlet');
+        const root = document.scrollingElement;
+        return {
+          gapBelowBar: Math.round(window.innerHeight - bar.bottom),
+          appbarTop: Math.round(document.querySelector('.appbar').getBoundingClientRect().top),
+          documentScrolls: root.scrollHeight > root.clientHeight + 1,
+          outletScrolls: outlet.scrollHeight > outlet.clientHeight + 1,
+        };
+      });
+
+    // The reported case: a tab with almost nothing on it.
+    await goToTab(page, 'scan');
+    const bare = await measure();
+    assert.equal(bare.gapBelowBar, 0, 'nothing to scroll, and still no gap underneath');
+    assert.equal(bare.documentScrolls, false);
+
+    // ...and with more books than fit.
+    await seed(page, Array.from({ length: 30 }, (_, i) => ({ title: `Book ${i}`, shelf: 'owned' })));
+    await goToTab(page, 'library');
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid=book-card]').length === 30);
+    const full = await measure();
+    assert.equal(full.gapBelowBar, 0);
+    assert.equal(full.outletScrolls, true, 'the outlet is the scroller');
+    assert.equal(full.documentScrolls, false, 'and the document is not');
+
+    await page.evaluate(() => document.querySelector('.outlet').scrollTo({ top: 99999 }));
+    const scrolled = await measure();
+    assert.equal(scrolled.gapBelowBar, 0, 'the bar does not travel with the content');
+    assert.equal(scrolled.appbarTop, 0, 'and neither does the header');
+
+    // Every phone height, short and tall.
+    for (const height of [568, 700, 1000]) {
+      await page.setViewportSize({ width: 390, height });
+      await page.waitForTimeout(80);
+      const sized = await measure();
+      assert.equal(sized.gapBelowBar, 0, `gap below the tab bar at ${height}px`);
+      assert.equal(sized.documentScrolls, false, `the document scrolls at ${height}px`);
+    }
+    await context.close();
+  });
+
   await t.test('rates a book with stars, then bombs it, from the detail sheet', async () => {
     const { context, page } = await openApp(browser, server.origin);
     await seed(page, [{ title: 'Piranesi', authors: ['Susanna Clarke'], shelf: 'reading' }]);
@@ -196,6 +255,38 @@ test('liboff app', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await page.waitForSelector('.sheet', { state: 'detached' });
     const readChip = await page.textContent('.chip[data-shelf=read]');
     assert.match(readChip, /Read\s*1/);
+    await context.close();
+  });
+
+  // The pile between wanting a book and reading it. Distinct from the wishlist
+  // on purpose, and unlike Reading and Read it stamps no dates — buying a book
+  // is not reading it.
+  await t.test('a book you own but have not started gets its own shelf', async () => {
+    const { context, page } = await openApp(browser, server.origin);
+    await seed(page, [{ title: '100 minutos para entender Marie Curie', shelf: 'wishlist' }]);
+
+    await page.click('[data-testid=book-card]');
+    await page.waitForSelector('[data-testid=sheet-close]');
+    await page.click('.segmented__item[data-shelf=owned]');
+    await page.waitForFunction(
+      () => document.querySelector('.segmented__item[data-shelf=owned]')?.classList.contains('is-on'),
+    );
+
+    const book = await page.evaluate(async () => {
+      const store = await import('/src/lib/store.js');
+      return store.state.books[0];
+    });
+    assert.equal(book.shelf, 'owned');
+    assert.equal(book.startedAt, null, 'owning a book does not start it');
+    assert.equal(book.finishedAt, null);
+
+    await page.click('[data-testid=sheet-close]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+    assert.match(await page.textContent('.chip[data-shelf=owned]'), /Owned\s*1/);
+    await page.click('.chip[data-shelf=owned]');
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid=book-card]').length === 1,
+    );
     await context.close();
   });
 

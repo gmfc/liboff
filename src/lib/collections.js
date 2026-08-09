@@ -111,6 +111,11 @@ export function renameCollection(collection, name) {
   return { ...collection, name: next, updatedAt: new Date().toISOString() };
 }
 
+/** Human name for an order id, from either list — '' if it is not one. */
+export function orderLabel(order) {
+  return COLLECTION_ORDERS.find((entry) => entry.id === order)?.label ?? '';
+}
+
 export function setCollectionOrder(collection, order) {
   const next = cleanOrder(order);
   if (next === collection.order) return collection;

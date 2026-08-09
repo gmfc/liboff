@@ -21,8 +21,11 @@ build step and no dependencies.
 - **Rank** every book 0–5 stars, or hand it a **bomb** for the ones that are
   not merely weak but actively bad. Zero stars and a bomb are different
   verdicts, and a bomb sorts below zero.
-- **Shelve** books as Want to read → Reading → Read, or Abandoned. Start and
-  finish dates fill themselves in.
+- **Shelve** books as Want to read → Owned → Reading → Read, or Abandoned.
+  Start and finish dates fill themselves in. *Owned* is the pile every reader
+  has and most apps refuse to name: bought, on the shelf, not started. A book
+  you mean to buy and a book already reproaching you from the bedside table
+  are not the same thing.
 - **Tag** freely — sci-fi, borrowed, signed — with the tags you already use
   offered as you type, so a library does not end up with "scifi" and "sci-fi"
   both meaning the same thing.
@@ -75,6 +78,14 @@ src/
   views/              library, scan, stats, settings, book sheet
 vendor/zbar-wasm/     barcode decoder, unmodified upstream (see Licence)
 ```
+
+**Layout.** One viewport-tall column — app bar, offline banner, scrolling
+outlet, tab bar — so the tab bar rests on the bottom edge by construction. It
+was `position: fixed; bottom: 0` over a scrolling document, which anchors to
+the *layout* viewport; on a phone that is not the rectangle you can see, and a
+page with too little content to scroll left the bar hovering above a strip of
+nothing. As the last item of a `100dvh` column there is no such strip: `dvh`
+tracks whatever the browser is currently showing.
 
 **Storage.** Books live in IndexedDB, and covers are stored beside them as
 blobs so a shelf still looks like a shelf on a plane. The whole library is held
@@ -221,7 +232,7 @@ too, for spreadsheets.
 npm start          # serve on :8080
 npm run check      # parse every module, verify imports and the precache list
 npm test           # unit tests (node:test, no dependencies)
-npm run test:e2e   # browser tests — needs Playwright, see below
+npm run test:e2e   # browser tests — needs Playwright, see below (runs serially)
 npm run icons      # regenerate the PNG icons from scripts/generate-icons.mjs
 ```
 
@@ -236,6 +247,12 @@ it when you want to run them:
 npm install --no-save playwright && npx playwright install chromium
 npm run test:e2e
 ```
+
+They run **one file at a time** (`--test-concurrency=1`). The default is one
+per core, which means five Chromiums at once, and the tests that wait on a
+service worker — the update check especially, which re-fetches and compares
+every precached asset — intermittently ran out of patience under that load.
+Serially the suite takes about 50 seconds instead of 25 and does not flake.
 
 `npm run check` is worth running before a commit: with no bundler, a mistyped
 import path and a service worker precache list that has drifted are both
