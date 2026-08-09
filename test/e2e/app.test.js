@@ -137,6 +137,39 @@ test('liboff app', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await context.close();
   });
 
+  /**
+   * The search box sticks to the top of the scroller, not to some offset into
+   * it. Its `top` used to carry the app bar's height plus the top safe-area
+   * inset, to clear an app bar that was sticky inside the same scrolling
+   * document. When the bar moved out of the scroller that offset became a
+   * phantom — and on a notched phone the inset made it large enough to park
+   * the search box a third of the way down the screen, floating over the
+   * books. The inset is zero in this browser, so what is measured here is the
+   * app-bar half of it: 66px before, one outlet padding after.
+   */
+  await t.test('the search box sticks to the top of the scroller, not below it', async () => {
+    const { context, page } = await openApp(browser, server.origin);
+    await seed(page, Array.from({ length: 20 }, (_, i) => ({ title: `Book ${i}`, shelf: 'owned' })));
+    await goToTab(page, 'library');
+    await page.waitForFunction(() => document.querySelectorAll('[data-testid=book-card]').length === 20);
+
+    await page.evaluate(() => document.querySelector('.outlet').scrollTo({ top: 600 }));
+    const stuck = await page.evaluate(() => {
+      const outlet = document.querySelector('.outlet');
+      const controls = document.querySelector('.library__controls').getBoundingClientRect();
+      return {
+        scrolled: outlet.scrollTop,
+        offset: Math.round(controls.top - outlet.getBoundingClientRect().top),
+      };
+    });
+    assert.ok(stuck.scrolled > 100, 'the fixture has to actually scroll or this proves nothing');
+    assert.ok(
+      stuck.offset >= 0 && stuck.offset < 24,
+      `the search box sat ${stuck.offset}px into the scroller`,
+    );
+    await context.close();
+  });
+
   await t.test('rates a book with stars, then bombs it, from the detail sheet', async () => {
     const { context, page } = await openApp(browser, server.origin);
     await seed(page, [{ title: 'Piranesi', authors: ['Susanna Clarke'], shelf: 'reading' }]);
