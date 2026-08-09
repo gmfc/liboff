@@ -1,10 +1,11 @@
 /*
  * liboff — mobile-first stylesheet.
  *
- * Layout is a fixed app bar, a scrolling outlet, and a bottom tab bar sitting
- * above the home indicator. Everything is sized in rem against a 16px root so
- * it scales with the reader's own text-size setting, and every interactive
- * target is at least 44px.
+ * Layout is one viewport-tall column — app bar, offline banner, scrolling
+ * outlet, tab bar — so the bar sits on the bottom edge by construction rather
+ * than by being positioned there. Everything is sized in rem against a 16px
+ * root so it scales with the reader's own text-size setting, and every
+ * interactive target is at least 44px.
  */
 
 :root {
@@ -77,6 +78,8 @@ html,
 body {
   margin: 0;
   height: 100%;
+  /* The document itself never scrolls — the outlet does. See #app. */
+  overflow: hidden;
 }
 
 body {
@@ -112,10 +115,24 @@ dd {
   margin: 0;
 }
 
+/*
+ * The whole app is exactly one viewport tall and the outlet is the only thing
+ * that scrolls, which is what keeps the tab bar on the bottom edge.
+ *
+ * It used to be `position: fixed; bottom: 0` over a scrolling document. That
+ * is bottom-anchored to the *layout* viewport, and on a phone the layout
+ * viewport and the part you can actually see are not the same rectangle — a
+ * browser's collapsing toolbars, and the home indicator area under
+ * `viewport-fit=cover`, both leave the bar floating above a strip of nothing
+ * when the page is too short to scroll. As the last item of a `100dvh` column
+ * it has no such gap to float over: `dvh` is the dynamic viewport, so the
+ * height tracks whatever the browser is currently showing.
+ */
 #app {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  height: 100vh; /* for anything too old to know dvh */
+  height: 100dvh;
 }
 
 .visually-hidden {
@@ -172,10 +189,11 @@ dd {
 /* ---------------------------------------------------------------- appbar */
 
 .appbar {
-  position: sticky;
-  top: 0;
+  /* A row of the column now, so it stays put without being stuck to
+     anything. */
   z-index: 20;
   display: flex;
+  flex: 0 0 auto;
   align-items: baseline;
   gap: 0.55rem;
   height: var(--top-h);
@@ -200,6 +218,7 @@ dd {
 
 .offline-banner {
   display: flex;
+  flex: 0 0 auto;
   gap: 0.5rem;
   align-items: center;
   justify-content: center;
@@ -215,7 +234,12 @@ dd {
 
 .outlet {
   flex: 1;
-  padding: 0.85rem 1rem calc(var(--bar-h) + 1.5rem);
+  /* Without min-height:0 a flex item refuses to shrink below its content, so
+     the column grows past the viewport and the tab bar goes with it. */
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 0.85rem 1rem 1.5rem;
   max-width: 60rem;
   width: 100%;
   margin-inline: auto;
@@ -230,9 +254,8 @@ dd {
 /* --------------------------------------------------------------- tab bar */
 
 .tabbar {
-  position: fixed;
-  inset: auto 0 0 0;
   z-index: 30;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   height: var(--bar-h);

@@ -79,6 +79,14 @@ src/
 vendor/zbar-wasm/     barcode decoder, unmodified upstream (see Licence)
 ```
 
+**Layout.** One viewport-tall column — app bar, offline banner, scrolling
+outlet, tab bar — so the tab bar rests on the bottom edge by construction. It
+was `position: fixed; bottom: 0` over a scrolling document, which anchors to
+the *layout* viewport; on a phone that is not the rectangle you can see, and a
+page with too little content to scroll left the bar hovering above a strip of
+nothing. As the last item of a `100dvh` column there is no such strip: `dvh`
+tracks whatever the browser is currently showing.
+
 **Storage.** Books live in IndexedDB, and covers are stored beside them as
 blobs so a shelf still looks like a shelf on a plane. The whole library is held
 in memory and written through, so no render ever waits on the database.
