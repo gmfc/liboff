@@ -101,11 +101,35 @@ inset made that a third of the way.
 
 **More → Screen** prints what the browser actually reports: the layout and
 visual viewports, the resolved safe-area insets, where the shell's edges are,
-and the gap between the shell's bottom and the viewport's. Rather more than a
-stylesheet usually earns, but two rounds of reasoning about which rectangle a
-length resolves to on somebody else's phone were two rounds too many. `env()`
-cannot be read from script, so the insets come from a throwaway element that
-takes them as padding.
+and the gap between the shell's bottom and the screen's. `env()` cannot be
+read from script, so the insets come from a throwaway element that takes them
+as padding.
+
+It is there because the answer could not be reasoned out, and three attempts
+proved it. On the phone in question — an installed app, screen 402×874 — the
+readings were:
+
+```
+layout   402×812        the rectangle CSS gets
+screen   402×874        the rectangle you can see
+insets   top 62 …
+```
+
+**The layout viewport was itself 62px shorter than the screen, by exactly the
+height of the status bar.** A home-screen app on iOS with a translucent status
+bar paints the whole screen but reports that shorter viewport, and every length
+resolving against it — `100%`, `vh`, `dvh`, and the containing block of a fixed
+element alike — is short by the same 62. So the shell filled the viewport
+exactly, reported a gap of zero, and still left a strip of nothing underneath.
+Three goes at moving the tab bar to the bottom edge, and the bottom edge was
+the thing in the wrong place.
+
+`shellExtension()` measures that deficit and the stylesheet adds it to the
+shell's height. It is deliberately narrow — installed, a top inset, and a
+deficit matching that inset within a pixel or two — and returns zero for
+everything else, including a browser tab, whose viewport is short by the
+browser's own furniture and where stretching the shell would push the tab bar
+behind the toolbar.
 
 **Storage.** Books live in IndexedDB, and covers are stored beside them as
 blobs so a shelf still looks like a shelf on a plane. The whole library is held

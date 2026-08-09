@@ -203,6 +203,27 @@ test('liboff app', { skip: playwright ? false : SKIP_REASON }, async (t) => {
       () => [...document.body.children].filter((n) => n.style?.paddingTop?.includes('env(')).length,
     );
     assert.equal(leftovers, 0, 'the inset probe cleans up after itself');
+
+    // No compensation anywhere but the one iOS case, and the shell's height
+    // must not quietly depend on it being applied.
+    const extra = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--shell-extra').trim(),
+    );
+    assert.equal(extra, '0px', 'this browser needs no extension');
+    assert.match(text, /extra {4}0/);
+
+    // The other half: when there *is* an extension, the shell and the tab bar
+    // with it have to actually move. The iOS condition cannot be reproduced
+    // here — env() is not settable — but the mechanism it drives can be.
+    const moved = await page.evaluate(() => {
+      document.documentElement.style.setProperty('--shell-extra', '62px');
+      const shell = document.querySelector('#app').getBoundingClientRect();
+      const bar = document.querySelector('.tabbar').getBoundingClientRect();
+      document.documentElement.style.setProperty('--shell-extra', '0px');
+      return { shellBottom: Math.round(shell.bottom), barBottom: Math.round(bar.bottom) };
+    });
+    assert.equal(moved.shellBottom, truth.height + 62, 'the shell extends past the viewport');
+    assert.equal(moved.barBottom, truth.height + 62, 'and the tab bar goes with it');
     await context.close();
   });
 
