@@ -79,13 +79,25 @@ src/
 vendor/zbar-wasm/     barcode decoder, unmodified upstream (see Licence)
 ```
 
-**Layout.** One viewport-tall column — app bar, offline banner, scrolling
-outlet, tab bar — so the tab bar rests on the bottom edge by construction. It
-was `position: fixed; bottom: 0` over a scrolling document, which anchors to
-the *layout* viewport; on a phone that is not the rectangle you can see, and a
-page with too little content to scroll left the bar hovering above a strip of
-nothing. As the last item of a `100dvh` column there is no such strip: `dvh`
-tracks whatever the browser is currently showing.
+**Layout.** The shell is a column pinned to the viewport with
+`position: fixed; inset: 0` — app bar, offline banner, scrolling outlet, tab
+bar — and the outlet is the only thing in it that scrolls. The tab bar is
+simply the column's last item, so it rests on the bottom edge; its own bottom
+padding clears the home indicator.
+
+No height unit, deliberately, having been wrong twice with them. `bottom: 0`
+on a fixed tab bar over a scrolling document anchors to the *layout* viewport,
+which on a phone is not the rectangle you can see. `100vh` is too tall
+whenever a browser toolbar is showing. `100dvh` has been reported to resolve
+short of the home indicator in a home-screen app. Under `viewport-fit=cover`
+the containing block of a fixed element is the whole screen, so `inset: 0`
+*is* the viewport, with nothing to compute.
+
+Anything sticky inside the outlet — the search box and shelf row — offsets
+from **zero**, because the scroller now starts below the app bar. Carrying the
+app bar's height there, as the search box did while the document was the
+scroller, parks it that far down the screen; on a notched phone the safe-area
+inset made that a third of the way.
 
 **Storage.** Books live in IndexedDB, and covers are stored beside them as
 blobs so a shelf still looks like a shelf on a plane. The whole library is held

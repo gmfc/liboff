@@ -116,23 +116,24 @@ dd {
 }
 
 /*
- * The whole app is exactly one viewport tall and the outlet is the only thing
- * that scrolls, which is what keeps the tab bar on the bottom edge.
+ * The app shell is exactly the viewport, and the outlet is the only thing
+ * inside it that scrolls. That is what keeps the tab bar on the bottom edge.
  *
- * It used to be `position: fixed; bottom: 0` over a scrolling document. That
- * is bottom-anchored to the *layout* viewport, and on a phone the layout
- * viewport and the part you can actually see are not the same rectangle — a
- * browser's collapsing toolbars, and the home indicator area under
- * `viewport-fit=cover`, both leave the bar floating above a strip of nothing
- * when the page is too short to scroll. As the last item of a `100dvh` column
- * it has no such gap to float over: `dvh` is the dynamic viewport, so the
- * height tracks whatever the browser is currently showing.
+ * `fixed; inset: 0` rather than any height unit, having now been wrong twice
+ * with units. Under `viewport-fit=cover` the containing block for a fixed
+ * element is the whole screen, so this *is* the viewport by definition: no
+ * `vh` (too tall whenever a browser toolbar is showing), no `dvh` (which iOS
+ * has been reported to resolve short of the home indicator in a home-screen
+ * app), and no `height: 100%` chain through html and body to keep intact.
+ *
+ * The tab bar is simply the last item of the column, so it has no gap to
+ * float over; its own bottom padding is what clears the home indicator.
  */
 #app {
+  position: fixed;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  height: 100vh; /* for anything too old to know dvh */
-  height: 100dvh;
 }
 
 .visually-hidden {
@@ -414,7 +415,12 @@ dd {
      shrink below its content otherwise, and the filter row overflows. */
   grid-template-columns: minmax(0, 1fr);
   position: sticky;
-  top: calc(var(--top-h) + env(safe-area-inset-top));
+  /* Zero, because the scroller starts below the app bar. This used to hold
+     `--top-h` plus the top inset, to clear an app bar that was sticky inside
+     the same scrolling document; once the bar moved out of the scroller that
+     offset became a phantom, parking the search box a third of the way down
+     a notched screen. */
+  top: 0;
   z-index: 10;
   display: grid;
   gap: 0.6rem;
