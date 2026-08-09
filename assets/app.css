@@ -1135,12 +1135,35 @@ dd {
   }
 }
 
-.sheet__grip {
-  width: 2.4rem;
-  height: 0.25rem;
-  margin: 0.55rem auto 0;
-  background: var(--line);
+/* A sheet is dismissed by its own button, not by a gesture.
+   The grip this replaces looked draggable and was not listening for one, and
+   on a phone the sheet covers nearly the whole screen — so the only ways out
+   were a sliver of backdrop above it and a key no phone has. Sticky, because
+   an X that scrolls away from a long book is only half a control. */
+.sheet__bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.4rem 0.5rem 0.1rem;
+  background: var(--paper);
+}
+
+.sheet__close {
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  color: var(--ink-2);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
   border-radius: 999px;
+  cursor: pointer;
+}
+
+.sheet__close:active {
+  background: var(--line);
 }
 
 .sheet__inner {

@@ -101,7 +101,23 @@ export function showBookSheet(book, options = {}) {
       // without this a screen reader stays behind on the library grid.
       tabindex: '-1',
     },
-    h('div', { class: 'sheet__grip', 'aria-hidden': 'true' }),
+    // Sticky, so a long book — one with notes, tags and half a dozen
+    // collections — can still be closed without scrolling back to the top.
+    h(
+      'div',
+      { class: 'sheet__bar' },
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'sheet__close',
+          'aria-label': 'Close',
+          dataset: { testid: 'sheet-close' },
+          onClick: () => close(),
+        },
+        icon('close', { size: 20 }),
+      ),
+    ),
     content,
   );
 
