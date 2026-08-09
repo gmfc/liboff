@@ -69,7 +69,7 @@ src/
   router.js           hash routing (works from any static subpath)
   update.js           service worker registration and the update check
   lib/                isbn, model, collections, tags, query, transfer, db,
-                      metadata, store
+                      metadata, covers, store
   scanner/            decode (BarcodeDetector or wasm) + camera loop
   ui/                 dom helpers, rating control, cards, toasts
   views/              library, scan, stats, settings, book sheet
@@ -79,6 +79,28 @@ vendor/zbar-wasm/     barcode decoder, unmodified upstream (see Licence)
 **Storage.** Books live in IndexedDB, and covers are stored beside them as
 blobs so a shelf still looks like a shelf on a plane. The whole library is held
 in memory and written through, so no render ever waits on the database.
+
+**Covers.** Three candidates are tried in turn until one yields real bytes,
+because a cover *URL* is not a cover — Open Library answers artwork it does not
+have with a 404, and taking the first address any catalogue mentioned left
+books blank that had a perfectly good cover one source over. Google's cover
+server leads: it takes an ISBN directly, is not metered against the Books API
+quota that regularly runs dry, and serves ~575px against the API's 128px
+thumbnail. Over ten ISBNs this took covers found from 6 to 8, and made most of
+the rest larger.
+
+It has one trap. Asked for a book it has no artwork for, that server does not
+send a 404 — it sends a grey image reading "image not available", byte-identical
+for every such book. Stored unchecked, a shelf fills up with those, which is
+worse than the placeholder this app draws itself (the title, on a colour
+derived from it). Real covers come back as JPEG and the placeholder as PNG, and
+that is the whole test.
+
+**Some books have no artwork anywhere**, and no amount of catalogue-shopping
+fixes that — a 2026 Brazilian paperback is not going to turn up in an American
+scanning project. So a book's page will take a photo instead. It is re-encoded
+to 700px on the way in, since a phone camera produces several megabytes and a
+tile draws about two hundred pixels. Books with no ISBN can have one too.
 
 **Shelves, tags and collections** are three different things on purpose:
 

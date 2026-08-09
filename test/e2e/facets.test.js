@@ -9,7 +9,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { goToTab, launchBrowser, loadPlaywright, openApp, startServer, SKIP_REASON } from './harness.mjs';
+import { goToTab, launchBrowser, loadPlaywright, openApp, startServer, waitFor, SKIP_REASON } from './harness.mjs';
 
 const playwright = loadPlaywright();
 
@@ -157,9 +157,7 @@ test('tags and collections', { skip: playwright ? false : SKIP_REASON }, async (
     // Leaving the collection hands the control back to the library preference,
     // and the collection keeps the order it was given.
     await page.click('[data-testid=filter-pill]');
-    await page.waitForFunction(
-      async () => (await import('/src/lib/store.js')).state.collectionId === null,
-    );
+    await waitFor(page, async () => (await import('/src/lib/store.js')).state.collectionId === null);
     const after = await readStore(page, async () => {
       const store = await import('/src/lib/store.js');
       return { sort: store.state.sort, order: store.state.collections[0].order };
@@ -236,7 +234,7 @@ test('tags and collections', { skip: playwright ? false : SKIP_REASON }, async (
     await page.fill('[data-testid=collection-name]', 'science fiction');
     await page.click('[data-testid=collection-save]');
 
-    await page.waitForFunction(async () => {
+    await waitFor(page, async () => {
       const store = await import('/src/lib/store.js');
       return store.state.books.filter((b) => (b.tags ?? []).includes('science fiction')).length === 2;
     });
@@ -275,7 +273,7 @@ test('tags and collections', { skip: playwright ? false : SKIP_REASON }, async (
     await page.waitForSelector('.dialog');
     await page.click('.dialog .btn--danger');
 
-    await page.waitForFunction(async () => {
+    await waitFor(page, async () => {
       const store = await import('/src/lib/store.js');
       return store.state.collections.length === 0;
     });
@@ -301,10 +299,10 @@ test('tags and collections', { skip: playwright ? false : SKIP_REASON }, async (
 
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.tabbar');
-    await page.waitForFunction(async () => {
+    await waitFor(page, async () => {
       const store = await import('/src/lib/store.js');
       return store.state.collections.length === 1;
-    }, null, { timeout: 10000 });
+    });
 
     const restored = await readStore(page, async () => {
       const store = await import('/src/lib/store.js');
@@ -374,10 +372,10 @@ test('tags and collections', { skip: playwright ? false : SKIP_REASON }, async (
     });
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('.tabbar');
-    await page.waitForFunction(async () => {
+    await waitFor(page, async () => {
       const store = await import('/src/lib/store.js');
       return store.state.collections.length === 1 && store.state.books.length === 1;
-    }, null, { timeout: 10000 });
+    });
     await context.close();
   });
 

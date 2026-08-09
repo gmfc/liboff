@@ -286,6 +286,18 @@ dd {
   transform: scale(0.975);
 }
 
+/* Secondary actions that sit three-to-a-row on a phone. Still a full tap
+   target vertically — only the horizontal padding gives way. */
+.btn--small {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+}
+
+.btn[disabled] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .btn--primary {
   background: var(--accent);
   color: #fff;
