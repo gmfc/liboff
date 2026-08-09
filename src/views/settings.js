@@ -271,7 +271,7 @@ export function renderSettings(container) {
         h(
           'p',
           { class: 'section__hint' },
-          'Open Library and Crossref need nothing. Google Books rations callers who bring no key of their own, against a single quota shared by every app that does the same — when it runs dry, that catalogue goes quiet for everyone at once. A key of your own is a quota of your own, and stays on this device.',
+          'Open Library, Crossref and the Brazilian ISBN agency need nothing. Google Books rations callers who bring no key of their own, against a single quota shared by every app that does the same — when it runs dry, that catalogue goes quiet for everyone at once. A key of your own is a quota of your own, and stays on this device.',
         ),
         h('input', {
           class: 'input',
@@ -325,7 +325,7 @@ export function renderSettings(container) {
         h(
           'p',
           { class: 'section__hint' },
-          'liboff catalogues books offline. Nothing leaves your device except ISBN lookups to Open Library, Google Books and Crossref.',
+          'liboff catalogues books offline. Nothing leaves your device except ISBN lookups to Open Library, Google Books, Crossref and — for Brazilian ISBNs — the CBL agency via BrasilAPI.',
         ),
         h(
           'p',
@@ -335,7 +335,7 @@ export function renderSettings(container) {
         h(
           'p',
           { class: 'section__hint' },
-          'Cover art and metadata come from Open Library, Google Books and Crossref.',
+          'Cover art and metadata come from Open Library, Google Books, Crossref and BrasilAPI.',
         ),
       ),
     );

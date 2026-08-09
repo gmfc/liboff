@@ -83,6 +83,19 @@ export function toIsbn13(input) {
 }
 
 /**
+ * Was this number registered in Brazil?
+ *
+ * The digits after the 978 are the registration group, and Brazil holds two:
+ * 85, and 65 since the first ran out. Worth knowing because the Brazilian
+ * agency publishes its own catalogue, and because asking a national catalogue
+ * about a book from somewhere else is a request nobody benefits from.
+ */
+export function isBrazilianIsbn(input) {
+  const value = cleanIsbn(input);
+  return isValidIsbn13(value) && /^978(85|65)/.test(value);
+}
+
+/**
  * Group for display.
  *
  * Correct ISBN hyphenation depends on the registration-group ranges, a table

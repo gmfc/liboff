@@ -72,11 +72,24 @@ const json = (route, body, status = 200) =>
 const OPEN_LIBRARY_URL = /\/\/openlibrary\.org\//;
 const GOOGLE_BOOKS_URL = /googleapis\.com\//;
 const CROSSREF_URL = /crossref\.org\//;
+const BRASIL_API_URL = /brasilapi\.com\.br\//;
 
-async function stubCatalogues(page, { openLibrary = {}, google = { totalItems: 0 }, crossref = { message: { items: [] } } } = {}) {
+async function stubCatalogues(
+  page,
+  {
+    openLibrary = {},
+    google = { totalItems: 0 },
+    crossref = { message: { items: [] } },
+    brasilApi = null,
+  } = {},
+) {
   await page.route(OPEN_LIBRARY_URL, (route) => json(route, openLibrary));
   await page.route(GOOGLE_BOOKS_URL, (route) => json(route, google));
   await page.route(CROSSREF_URL, (route) => json(route, crossref));
+  // 404 is what the agency says about a number it never registered.
+  await page.route(BRASIL_API_URL, (route) =>
+    brasilApi ? json(route, brasilApi) : json(route, { name: 'NotFoundError' }, 404),
+  );
 }
 
 /** The common case: Open Library knows the book, nobody else is needed. */
@@ -241,6 +254,42 @@ test('scan flow', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await page.click('[data-testid=retry-lookup]');
     await page.waitForSelector('.row-card__title', { timeout: 30000 });
     assert.match(await page.textContent('.result-card__flag'), /Found via Open Library/);
+    await context.close();
+  });
+
+  // The book that prompted this: a 2026 Brazilian title in none of the global
+  // catalogues, which the national agency has because it registered the number.
+  await t.test('a Brazilian book the global catalogues never heard of is found anyway', async () => {
+    const isbn = '9786555666779';
+    const { context, page } = await openWithCamera(browser, server.origin, isbn);
+    await stubCatalogues(page, {
+      brasilApi: {
+        isbn,
+        title: 'John Locke, Adam Smith e o Liberalismo',
+        subtitle: null,
+        authors: ['Cultural Livros'],
+        publisher: 'Cultural Livros e Editora',
+        year: 2026,
+        page_count: 144,
+        cover_url: null,
+        provider: 'cbl',
+      },
+    });
+
+    await goToTab(page, 'scan');
+    await page.click('[data-testid=start-scan]');
+    await page.waitForSelector('[data-testid=scan-result]', { timeout: 30000 });
+    assert.match(await page.textContent('.result-card__flag'), /Found via CBL/);
+
+    await page.click('[data-testid=confirm-add]');
+    const book = await page.evaluate(async () => {
+      const store = await import('/src/lib/store.js');
+      return store.state.books[0];
+    });
+    assert.equal(book.title, 'John Locke, Adam Smith e o Liberalismo');
+    assert.equal(book.pages, 144);
+    assert.equal(book.year, 2026);
+    assert.equal(book.isbn, isbn);
     await context.close();
   });
 

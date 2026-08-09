@@ -13,6 +13,12 @@
  * Crossref is asked only when both miss — it indexes scholarly books, so it
  * answers for the monograph the trade catalogues do not have.
  *
+ * A Brazilian ISBN is also put to the Brazilian agency, through BrasilAPI. The
+ * global catalogues are thin on Brazil in a way that is easy to measure: over
+ * a sample of six Brazilian ISBNs, Open Library had one and the national
+ * agency had five, four of which no other reachable catalogue held at all.
+ * Since the agency registered those numbers it leads the merge for them.
+ *
  * **Correctness.** Open Library replies are keyed by the ISBN asked for, so
  * they verify themselves. Google's do not: `q=isbn:` is a search, and a search
  * can return a book that is not the one you scanned. Every Google and Crossref
@@ -33,12 +39,13 @@
  * to manual entry, and offline it must.
  */
 
-import { cleanIsbn, isbn13To10, toIsbn13 } from './isbn.js';
+import { cleanIsbn, isBrazilianIsbn, isbn13To10, toIsbn13 } from './isbn.js';
 
 const OPEN_LIBRARY = 'https://openlibrary.org/api/books';
 const OPEN_LIBRARY_SEARCH = 'https://openlibrary.org/search.json';
 const GOOGLE_BOOKS = 'https://www.googleapis.com/books/v1/volumes';
 const CROSSREF = 'https://api.crossref.org/works';
+const BRASIL_API = 'https://brasilapi.com.br/api/isbn/v1';
 const COVER_BASE = 'https://covers.openlibrary.org/b/isbn';
 
 /**
@@ -216,6 +223,43 @@ async function fromGoogleBooks(isbns) {
 }
 
 /**
+ * The Brazilian ISBN agency, via BrasilAPI.
+ *
+ * CBL registers every Brazilian ISBN, so for those numbers it is the source of
+ * record rather than a second opinion — and the global catalogues are thin on
+ * Brazil in a way that shows up immediately: of six Brazilian ISBNs tried
+ * here, Open Library held one and CBL held five.
+ *
+ * Only Brazilian numbers are sent. The endpoint rejects everything else with a
+ * 400, so asking about a Penguin paperback would be a request that could only
+ * fail, made against somebody's free service.
+ *
+ * Open Library and Google Books are excluded from the provider list because
+ * this app asks them itself; letting them through would credit the same
+ * catalogue twice under a different name.
+ */
+async function fromBrasilApi(isbn) {
+  const url = `${BRASIL_API}/${isbn}?providers=cbl,mercado-editorial`;
+  const { data, transient } = await requestOnce(url);
+  const title = cleanText(data?.title);
+  if (!title) return { record: null, transient };
+
+  const agency = { cbl: 'CBL', 'mercado-editorial': 'Mercado Editorial' };
+  return {
+    transient: false,
+    record: {
+      title: cleanText([title, cleanText(data.subtitle)].filter(Boolean).join(': ')),
+      authors: cleanAuthors(data.authors),
+      publisher: cleanText(data.publisher),
+      year: saneYear(data.year),
+      pages: sanePages(data.page_count),
+      coverUrl: secureUrl(data.cover_url),
+      source: agency[data.provider] ?? 'BrasilAPI',
+    },
+  };
+}
+
+/**
  * Crossref, asked last and only on a miss. It indexes what publishers deposit
  * a DOI for — scholarly monographs and textbooks — so it is silent on most
  * fiction and decisive on the academic book neither trade catalogue carries.
@@ -329,7 +373,13 @@ export async function lookupIsbn(input, options = {}) {
   // pre-2007 book is filed under. 979 prefixes have no ISBN-10 and yield one.
   const isbns = [isbn, isbn13To10(isbn)].filter(Boolean);
 
-  const attempts = await Promise.all([fromOpenLibrary(isbns), fromGoogleBooks(isbns)]);
+  // The national agency goes first for its own numbers: it registered them,
+  // and merging takes the leading source's value wherever it has one.
+  const asked = isBrazilianIsbn(isbn)
+    ? [fromBrasilApi(isbn), fromOpenLibrary(isbns), fromGoogleBooks(isbns)]
+    : [fromOpenLibrary(isbns), fromGoogleBooks(isbns)];
+
+  const attempts = await Promise.all(asked);
   let records = attempts.map((attempt) => attempt.record);
 
   // Asked whenever nothing has been found — including when a catalogue fell
