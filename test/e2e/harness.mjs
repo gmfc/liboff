@@ -141,6 +141,29 @@ export async function openApp(browser, origin, options = {}) {
   return { context, page, errors };
 }
 
+/**
+ * Poll a value out of the page until it satisfies the predicate.
+ *
+ * Deliberately not `page.waitForFunction`. That takes whatever the page
+ * function returns and tests it for truthiness — and an `async` function
+ * returns a Promise, which is always truthy, so a wait written that way is
+ * satisfied on its first poll without having waited for anything. Measured:
+ * such a wait returned in 9 ms on a condition that was still false.
+ *
+ * Anything worth waiting for in this app is behind an `await` (the store, the
+ * database), so the polling has to happen out here, where `page.evaluate` does
+ * settle the promise.
+ */
+export async function waitFor(page, fn, arg, { timeout = 15000, interval = 100 } = {}) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const value = await page.evaluate(fn, arg);
+    if (value) return value;
+    if (Date.now() > deadline) throw new Error(`waitFor timed out after ${timeout}ms`);
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+}
+
 /** Move between the four tabs. */
 export async function goToTab(page, tab) {
   await page.click(`[data-tab="${tab}"]`);

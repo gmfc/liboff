@@ -273,6 +273,34 @@ export function renderSettings(container) {
           { class: 'section__hint' },
           'Open Library, Crossref and the Brazilian ISBN agency need nothing. Google Books rations callers who bring no key of their own, against a single quota shared by every app that does the same — when it runs dry, that catalogue goes quiet for everyone at once. A key of your own is a quota of your own, and stays on this device.',
         ),
+        row(
+          'Missing covers',
+          'Scans made offline, and books whose artwork turned up later. Looks again for every one of them.',
+          h(
+            'button',
+            {
+              type: 'button',
+              class: 'btn btn--ghost',
+              dataset: { testid: 'fetch-covers' },
+              disabled: store.booksMissingCovers().length === 0,
+              onClick: async (event) => {
+                const button = event.currentTarget;
+                button.disabled = true;
+                const { found, tried } = await store.fetchMissingCovers((done, total) => {
+                  button.textContent = `${done}/${total}…`;
+                });
+                button.textContent = 'Fetch';
+                render();
+                toast(
+                  found
+                    ? `Found ${found} cover${found === 1 ? '' : 's'} of ${tried}.`
+                    : `No new artwork for ${tried} book${tried === 1 ? '' : 's'}.`,
+                );
+              },
+            },
+            `Fetch${store.booksMissingCovers().length ? ` (${store.booksMissingCovers().length})` : ''}`,
+          ),
+        ),
         h('input', {
           class: 'input',
           type: 'text',

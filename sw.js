@@ -41,6 +41,7 @@ const SHELL_ASSETS = [
   'src/install.js',
   'src/update.js',
   'src/lib/collections.js',
+  'src/lib/covers.js',
   'src/lib/db.js',
   'src/lib/isbn.js',
   'src/lib/metadata.js',

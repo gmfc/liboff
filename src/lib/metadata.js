@@ -453,24 +453,6 @@ export async function searchByText(queryText, limit = 12) {
     .filter((item) => item.title);
 }
 
-/**
- * Download a cover so it can be stored alongside the book. Returns null on any
- * failure, including the opaque-response case where a missing cover comes back
- * as a 1-pixel placeholder.
- */
-export async function fetchCoverBlob(url) {
-  if (!url) return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) return null;
-    const blob = await response.blob();
-    if (!blob.type.startsWith('image/') || blob.size < 1024) return null;
-    return blob;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// Fetching the artwork itself lives in covers.js: which candidate to try, and
+// what counts as a cover rather than a picture of the words "no cover", is a
+// separate question from what a catalogue says about a book.

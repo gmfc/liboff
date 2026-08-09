@@ -143,6 +143,88 @@ export function showBookSheet(book, options = {}) {
     mount(content, editing ? editView() : detailView());
   }
 
+  /**
+   * The cover controls.
+   *
+   * Plenty of books have no artwork anywhere — the ISBN agencies do not hold
+   * it, and a 2026 Brazilian paperback is not going to turn up in an American
+   * scanning project. Taking a photo of the book in your hand is the only
+   * answer that always works, so it is offered beside the one that sometimes
+   * does.
+   */
+  function coverSection() {
+    const held = store.hasLocalCover(current);
+    const picker = h('input', {
+      type: 'file',
+      accept: 'image/*',
+      class: 'visually-hidden',
+      dataset: { testid: 'cover-file' },
+      onChange: async (event) => {
+        const file = event.target.files?.[0];
+        event.target.value = '';
+        if (!file) return;
+        await store.setCustomCover(current.id, file);
+        render();
+        toast('Cover set');
+      },
+    });
+
+    return h(
+      'section',
+      { class: 'sheet__section' },
+      h('h3', { class: 'sheet__label' }, 'Cover'),
+      h(
+        'div',
+        { class: 'button-row' },
+        h(
+          'label',
+          { class: 'btn btn--ghost btn--small', dataset: { testid: 'cover-pick' } },
+          icon('image', { size: 16 }),
+          held ? 'Replace' : 'Use a photo',
+          picker,
+        ),
+        held
+          ? null
+          : h(
+              'button',
+              {
+                type: 'button',
+                class: 'btn btn--ghost btn--small',
+                dataset: { testid: 'cover-find' },
+                disabled: !current.isbn,
+                onClick: async (event) => {
+                  const button = event.currentTarget;
+                  button.disabled = true;
+                  button.textContent = 'Looking…';
+                  const found = await store.findCover(current.id);
+                  current = store.findById(current.id) ?? current;
+                  render();
+                  if (!found) toast('No cover found for this ISBN.', { kind: 'warn' });
+                },
+              },
+              icon('search', { size: 16 }),
+              'Find one',
+            ),
+        held
+          ? h(
+              'button',
+              {
+                type: 'button',
+                class: 'btn btn--ghost btn--small',
+                dataset: { testid: 'cover-remove' },
+                onClick: async () => {
+                  await store.removeCover(current.id);
+                  current = store.findById(current.id) ?? current;
+                  render();
+                },
+              },
+              'Remove',
+            )
+          : null,
+      ),
+    );
+  }
+
   function detailView() {
     const value = { rating: current.rating, bomb: current.bomb };
     return h(
@@ -174,6 +256,8 @@ export function showBookSheet(book, options = {}) {
         ratingInput(value, (next) => patch(next)),
         ratingClearButton(value, (next) => patch(next)),
       ),
+
+      coverSection(),
 
       h(
         'section',

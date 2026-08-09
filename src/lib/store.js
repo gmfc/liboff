@@ -22,7 +22,8 @@ import { removeTagFromBooks, renameTagInBooks } from './tags.js';
 import { applyShelfSideEffects, makeBook, updateBook } from './model.js';
 import { DEFAULT_SORT } from './query.js';
 import { toIsbn13 } from './isbn.js';
-import { clearLookupCache, fetchCoverBlob, setGoogleBooksKey } from './metadata.js';
+import { clearLookupCache, setGoogleBooksKey } from './metadata.js';
+import { coverKey, resolveCover, shrinkImage } from './covers.js';
 
 const listeners = new Set();
 
@@ -102,17 +103,28 @@ function makeCollectionSafe(raw) {
 async function hydrateCovers() {
   const seen = new Set();
   for (const book of state.books) {
-    if (!book.isbn || seen.has(book.isbn)) continue;
-    seen.add(book.isbn);
-    const blob = await db.getCover(book.isbn);
-    if (blob) coverUrls.set(book.isbn, URL.createObjectURL(blob));
+    const key = coverKey(book);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const blob = await db.getCover(key);
+    if (blob) coverUrls.set(key, URL.createObjectURL(blob));
   }
   if (seen.size) notify();
 }
 
 /** Locally cached cover for a book, or '' to fall back to the remote URL. */
 export function localCover(book) {
-  return book?.isbn ? (coverUrls.get(book.isbn) ?? '') : '';
+  const key = coverKey(book);
+  return key ? (coverUrls.get(key) ?? '') : '';
+}
+
+export function hasLocalCover(book) {
+  return Boolean(localCover(book));
+}
+
+/** Books whose artwork never arrived — added offline, or simply not found. */
+export function booksMissingCovers() {
+  return state.books.filter((book) => book.isbn && !hasLocalCover(book));
 }
 
 export function findById(id) {
@@ -152,7 +164,9 @@ export async function editBook(id, patch) {
   state.books = state.books.map((book) => (book.id === id ? next : book));
   notify();
   await persist(next);
-  if (patch.coverUrl) cacheCover(next);
+  // Only when nothing is held: cacheCover writes the resolved address back
+  // through here, and re-entering would be a loop rather than a refresh.
+  if (patch.coverUrl && !coverUrls.has(coverKey(next))) cacheCover(next);
   return next;
 }
 
@@ -163,11 +177,12 @@ export async function removeBook(id) {
   notify();
   await db.deleteBook(id);
   // Only drop the cached cover when no other copy of the book still needs it.
-  if (book?.isbn && !state.books.some((entry) => entry.isbn === book.isbn)) {
-    const url = coverUrls.get(book.isbn);
+  const key = coverKey(book);
+  if (key && !state.books.some((entry) => coverKey(entry) === key)) {
+    const url = coverUrls.get(key);
     if (url) URL.revokeObjectURL(url);
-    coverUrls.delete(book.isbn);
-    await db.deleteCover(book.isbn);
+    coverUrls.delete(key);
+    await db.deleteCover(key);
   }
   return book;
 }
@@ -315,24 +330,93 @@ export async function clearLibrary() {
   await db.clearCovers();
 }
 
+/** Hold the bytes and hand the view an object URL, replacing any it had. */
+function adoptCover(key, blob) {
+  const previous = coverUrls.get(key);
+  if (previous) URL.revokeObjectURL(previous);
+  coverUrls.set(key, URL.createObjectURL(blob));
+  notify();
+}
+
 /**
  * Pull the cover down once and keep the bytes, so the shelf still looks like a
  * shelf on a plane. Failures are silent by design.
+ *
+ * A cover already held is never replaced: it may be one you chose yourself,
+ * and a background refresh quietly overwriting that would be a small theft.
  */
 export async function cacheCover(book) {
-  if (!book?.isbn || !book.coverUrl) return;
-  if (coverUrls.has(book.isbn)) return;
-  const existing = await db.getCover(book.isbn);
+  const key = coverKey(book);
+  if (!key || coverUrls.has(key)) return null;
+  const existing = await db.getCover(key);
   if (existing) {
-    coverUrls.set(book.isbn, URL.createObjectURL(existing));
-    notify();
-    return;
+    adoptCover(key, existing);
+    return existing;
   }
-  const blob = await fetchCoverBlob(book.coverUrl);
-  if (!blob) return;
-  await db.putCover(book.isbn, blob);
-  coverUrls.set(book.isbn, URL.createObjectURL(blob));
-  notify();
+  if (!book.isbn) return null; // nothing to look anything up by
+  const found = await resolveCover(book);
+  if (!found) return null;
+  await db.putCover(key, found.blob);
+  adoptCover(key, found.blob);
+  // Remember where it actually came from, not the address that was merely
+  // mentioned first — so a later render has a working URL to fall back on.
+  if (found.url !== book.coverUrl) await editBook(book.id, { coverUrl: found.url });
+  return found.blob;
+}
+
+/** Look again, now, for a book whose artwork never turned up. */
+export async function findCover(id) {
+  const book = findById(id);
+  if (!book?.isbn) return null;
+  const found = await resolveCover(book);
+  if (!found) return null;
+  await db.putCover(coverKey(book), found.blob);
+  adoptCover(coverKey(book), found.blob);
+  if (found.url !== book.coverUrl) await editBook(book.id, { coverUrl: found.url });
+  return found.blob;
+}
+
+/**
+ * A cover of your own, for the many books whose artwork is nowhere — shrunk
+ * first, because a photo off a phone is several megabytes and a cover is drawn
+ * at about two hundred pixels.
+ */
+export async function setCustomCover(id, file) {
+  const book = findById(id);
+  if (!book || !file) return null;
+  const blob = await shrinkImage(file);
+  const key = coverKey(book);
+  await db.putCover(key, blob);
+  adoptCover(key, blob);
+  return blob;
+}
+
+export async function removeCover(id) {
+  const book = findById(id);
+  const key = coverKey(book);
+  if (!key) return;
+  const url = coverUrls.get(key);
+  if (url) URL.revokeObjectURL(url);
+  coverUrls.delete(key);
+  await db.deleteCover(key);
+  // Also drop the remote address, or the next render would simply fetch the
+  // artwork that was just thrown away.
+  if (book.coverUrl) await editBook(book.id, { coverUrl: '' });
+  else notify();
+}
+
+/**
+ * Fill in the gaps for a whole shelf at once, after a batch of scans made on a
+ * train. Sequential on purpose: this is a background courtesy, not a race.
+ */
+export async function fetchMissingCovers(onProgress) {
+  const pending = booksMissingCovers();
+  let found = 0;
+  for (let index = 0; index < pending.length; index += 1) {
+    if (await findCover(pending[index].id)) found += 1;
+    onProgress?.(index + 1, pending.length, found);
+  }
+  return { found, tried: pending.length };
 }
 
 export async function setPreference(key, value) {
