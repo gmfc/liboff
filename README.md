@@ -99,6 +99,14 @@ app bar's height there, as the search box did while the document was the
 scroller, parks it that far down the screen; on a notched phone the safe-area
 inset made that a third of the way.
 
+**More → Screen** prints what the browser actually reports: the layout and
+visual viewports, the resolved safe-area insets, where the shell's edges are,
+and the gap between the shell's bottom and the viewport's. Rather more than a
+stylesheet usually earns, but two rounds of reasoning about which rectangle a
+length resolves to on somebody else's phone were two rounds too many. `env()`
+cannot be read from script, so the insets come from a throwaway element that
+takes them as padding.
+
 **Storage.** Books live in IndexedDB, and covers are stored beside them as
 blobs so a shelf still looks like a shelf on a plane. The whole library is held
 in memory and written through, so no render ever waits on the database.
