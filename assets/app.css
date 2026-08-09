@@ -131,7 +131,18 @@ dd {
  */
 #app {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  left: 0;
+  /*
+   * `100%` of the layout viewport, plus however much that viewport falls
+   * short of the screen. Almost always zero — see shellExtension() for the one
+   * case that is not, an installed iOS app whose layout viewport is shorter
+   * than the screen by the height of the status bar. Measured at runtime and
+   * published as this property, rather than assumed, because guessing which
+   * rectangle a length resolves to is what went wrong three times.
+   */
+  height: calc(100% + var(--shell-extra, 0px));
   display: flex;
   flex-direction: column;
 }

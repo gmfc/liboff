@@ -9,6 +9,7 @@ import { renderStats } from './views/stats.js';
 import { applyTheme, renderSettings } from './views/settings.js';
 import { onInstallChange, watchInstall } from './install.js';
 import { registerServiceWorker } from './update.js';
+import { watchShellExtension } from './lib/viewport.js';
 import { closeBookSheet } from './views/book-sheet.js';
 
 const TABS = [
@@ -76,6 +77,8 @@ async function main() {
   defineRoute('/stats', renderStats);
   defineRoute('/more', renderSettings);
 
+  // Before the first paint: the shell's height depends on it.
+  watchShellExtension();
   watchInstall();
   store.watchConnectivity();
   onInstallChange(() => store.notify());
