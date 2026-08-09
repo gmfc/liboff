@@ -199,6 +199,38 @@ test('liboff app', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await context.close();
   });
 
+  // The pile between wanting a book and reading it. Distinct from the wishlist
+  // on purpose, and unlike Reading and Read it stamps no dates — buying a book
+  // is not reading it.
+  await t.test('a book you own but have not started gets its own shelf', async () => {
+    const { context, page } = await openApp(browser, server.origin);
+    await seed(page, [{ title: '100 minutos para entender Marie Curie', shelf: 'wishlist' }]);
+
+    await page.click('[data-testid=book-card]');
+    await page.waitForSelector('[data-testid=sheet-close]');
+    await page.click('.segmented__item[data-shelf=owned]');
+    await page.waitForFunction(
+      () => document.querySelector('.segmented__item[data-shelf=owned]')?.classList.contains('is-on'),
+    );
+
+    const book = await page.evaluate(async () => {
+      const store = await import('/src/lib/store.js');
+      return store.state.books[0];
+    });
+    assert.equal(book.shelf, 'owned');
+    assert.equal(book.startedAt, null, 'owning a book does not start it');
+    assert.equal(book.finishedAt, null);
+
+    await page.click('[data-testid=sheet-close]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+    assert.match(await page.textContent('.chip[data-shelf=owned]'), /Owned\s*1/);
+    await page.click('.chip[data-shelf=owned]');
+    await page.waitForFunction(
+      () => document.querySelectorAll('[data-testid=book-card]').length === 1,
+    );
+    await context.close();
+  });
+
   await t.test('filters by shelf and searches by author, accents and all', async () => {
     const { context, page } = await openApp(browser, server.origin);
     await seed(page, SAMPLE);

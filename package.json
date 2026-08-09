@@ -9,7 +9,7 @@
     "start": "node scripts/serve.mjs",
     "serve": "node scripts/serve.mjs",
     "test": "node --test \"test/unit/*.test.js\"",
-    "test:e2e": "node --test --test-timeout=120000 \"test/e2e/*.test.js\"",
+    "test:e2e": "node --test --test-timeout=120000 --test-concurrency=1 \"test/e2e/*.test.js\"",
     "test:all": "npm test && npm run test:e2e",
     "icons": "node scripts/generate-icons.mjs",
     "check": "node scripts/check-syntax.mjs"

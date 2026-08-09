@@ -7,8 +7,17 @@
  * sorts below zero stars — and hides the stars in the UI.
  */
 
+/**
+ * Where a book is in your reading, in the order it usually travels.
+ *
+ * "Owned" is the pile every reader has and no app names: bought, on the
+ * shelf, not started. It is deliberately separate from the wishlist — the
+ * difference between a book you mean to buy and a book already reproaching
+ * you from the bedside table is the whole reason to write it down.
+ */
 export const SHELVES = [
   { id: 'wishlist', label: 'Want to read', short: 'Wishlist' },
+  { id: 'owned', label: 'Owned, unread', short: 'Owned' },
   { id: 'reading', label: 'Reading', short: 'Reading' },
   { id: 'read', label: 'Read', short: 'Read' },
   { id: 'abandoned', label: 'Abandoned', short: 'Abandoned' },

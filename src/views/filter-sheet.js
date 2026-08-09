@@ -13,7 +13,8 @@
 import { h, icon, mount } from '../ui/dom.js';
 import { collectionIcon, countBadge, tagLabel } from '../ui/chips.js';
 import { confirmDialog, toast } from '../ui/toast.js';
-import { sortCollections } from '../lib/collections.js';
+import { COLLECTION_ORDERS, sortCollections } from '../lib/collections.js';
+import { SORTS } from '../lib/query.js';
 import { tagCounts } from '../lib/tags.js';
 import * as store from '../lib/store.js';
 
@@ -127,6 +128,40 @@ export function showFilterSheet() {
     if (previouslyFocused instanceof HTMLElement && previouslyFocused.isConnected) {
       previouslyFocused.focus({ preventScroll: true });
     }
+  }
+
+  /**
+   * The order rows.
+   *
+   * This used to be a `<select>` beside the shelf chips, where it crowded the
+   * shelf names into a scroll and still only showed one option at a time. In
+   * the sheet there is room to show every choice at once, and tapping a row
+   * beats a native picker on a phone.
+   *
+   * Same two owners as before: with a collection open it sets that
+   * collection's own order, otherwise your library-wide preference.
+   */
+  function orderRow(option, active, collection) {
+    return h(
+      'div',
+      { class: ['facet-row', active ? 'is-on' : ''], dataset: { testid: 'order-row' } },
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'facet-row__main',
+          role: 'radio',
+          'aria-checked': String(active),
+          dataset: { order: option.id },
+          onClick: () => {
+            if (collection) store.editCollectionOrder(collection.id, option.id);
+            else store.setPreference('sort', option.id);
+          },
+        },
+        h('span', { class: 'facet-row__name' }, option.label),
+        active ? icon('check', { size: 18, className: 'facet-row__tick' }) : null,
+      ),
+    );
   }
 
   function collectionRow(collection) {
@@ -251,11 +286,34 @@ export function showFilterSheet() {
     const tags = tagCounts(store.state.books);
     const filtering = store.state.collectionId || store.state.tag;
 
+    const collection = store.state.collectionId
+      ? collections.find((entry) => entry.id === store.state.collectionId)
+      : null;
+    // Only a collection can be in its own manual order; the library at large
+    // has no such sequence to fall back to.
+    const orders = collection ? COLLECTION_ORDERS : SORTS;
+    const activeOrder = collection ? collection.order : store.state.sort;
+
     mount(
       content,
       h(
         'div',
         { class: 'sheet__inner' },
+        h(
+          'section',
+          { class: 'section' },
+          h(
+            'h2',
+            { class: 'section__title' },
+            collection ? `Order in ${collection.name}` : 'Order',
+          ),
+          h(
+            'div',
+            { class: 'facet-list', role: 'radiogroup', 'aria-label': 'Order' },
+            ...orders.map((option) => orderRow(option, option.id === activeOrder, collection)),
+          ),
+        ),
+
         h(
           'section',
           { class: 'section' },

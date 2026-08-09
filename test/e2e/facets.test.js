@@ -128,22 +128,26 @@ test('tags and collections', { skip: playwright ? false : SKIP_REASON }, async (
       ['Dune', 'The Hobbit', 'Piranesi', 'Solaris'],
       'by title, with the article ignored',
     );
-    assert.equal(await page.inputValue('[data-testid=library-sort]'), 'title-asc');
+    assert.match(await page.textContent('.summary'), /Title A–Z/, 'and the order is stated');
 
-    await page.selectOption('[data-testid=library-sort]', 'author-asc');
-    await page.waitForFunction(
-      () => document.querySelector('.card__title')?.textContent === 'Piranesi',
-    );
+    // The order lives in the filter sheet now, one tappable row per choice.
+    const chooseOrder = async (id) => {
+      await page.click('[data-testid=open-filters]');
+      await page.waitForSelector(`[data-order="${id}"]`);
+      await page.click(`[data-order="${id}"]`);
+      await page.click('[data-testid=sheet-close]');
+      await page.waitForSelector('.sheet', { state: 'detached' });
+    };
+
+    await chooseOrder('author-asc');
     assert.deepEqual(await titles(), ['Piranesi', 'Dune', 'Solaris', 'The Hobbit'], 'by surname');
 
     // The order you added them in is still there to go back to.
-    await page.selectOption('[data-testid=library-sort]', 'manual');
-    await page.waitForFunction(
-      () => document.querySelector('.card__title')?.textContent === 'Solaris',
-    );
+    await chooseOrder('manual');
     assert.deepEqual(await titles(), ['Solaris', 'The Hobbit', 'Piranesi', 'Dune']);
+    assert.match(await page.textContent('.summary'), /Order added/);
 
-    await page.selectOption('[data-testid=library-sort]', 'author-asc');
+    await chooseOrder('author-asc');
     await page.reload({ waitUntil: 'load' });
     await page.waitForSelector('[data-testid=book-card]');
     await page.click('[data-testid=open-filters]');
@@ -164,7 +168,14 @@ test('tags and collections', { skip: playwright ? false : SKIP_REASON }, async (
     });
     assert.equal(after.sort, 'added-desc', 'the library preference was never touched');
     assert.equal(after.order, 'author-asc');
-    assert.equal(await page.inputValue('[data-testid=library-sort]'), 'added-desc');
+    assert.match(await page.textContent('.summary'), /Recently added/);
+
+    // And with no collection open, the sheet offers no manual order: only a
+    // collection has a sequence of its own to fall back to.
+    await page.click('[data-testid=open-filters]');
+    await page.waitForSelector('[data-testid=order-row]');
+    assert.equal(await page.locator('[data-order=manual]').count(), 0);
+    assert.equal(await page.locator('[data-order=added-desc][aria-checked=true]').count(), 1);
     await context.close();
   });
 

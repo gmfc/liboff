@@ -12,6 +12,7 @@ import {
   updateBook,
   BOMB_RANK,
   DEFAULT_SHELF,
+  SHELF_IDS,
 } from '../../src/lib/model.js';
 
 test('makeBook normalises whatever it is handed', () => {
@@ -125,6 +126,22 @@ test('shelving to "read" fills in both dates but never overwrites one', () => {
   const read = applyShelfSideEffects(book, 'read');
   assert.equal(read.startedAt, '2001-02-03', 'an explicit date survives');
   assert.match(read.finishedAt, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test('owning a book you have not started stamps no dates', () => {
+  const owned = applyShelfSideEffects(makeBook({ title: 'x' }), 'owned');
+  assert.equal(owned.shelf, 'owned');
+  assert.equal(owned.startedAt, null, 'buying a book is not reading it');
+  assert.equal(owned.finishedAt, null);
+});
+
+test('the shelves run in the order a book travels', () => {
+  assert.deepEqual(SHELF_IDS, ['wishlist', 'owned', 'reading', 'read', 'abandoned']);
+  assert.equal(
+    makeBook({ title: 'x', shelf: 'owned' }).shelf,
+    'owned',
+    'and the new one is a shelf a book can actually be put on',
+  );
 });
 
 test('authorText degrades gracefully', () => {

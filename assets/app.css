@@ -429,18 +429,10 @@ dd {
   outline-offset: 1px;
 }
 
-.library__filters {
-  display: flex;
-  gap: 0.5rem;
-  align-items: center;
-  min-width: 0;
-}
-
 .chips {
   display: flex;
-  /* Without min-width:0 this flex item refuses to shrink below its content
-     width and pushes the sort control off the side of the screen. */
-  flex: 1;
+  /* The shelf row is the only thing on this line now that the order lives in
+     the filter sheet, so it gets the full width to scroll within. */
   min-width: 0;
   gap: 0.4rem;
   overflow-x: auto;
@@ -477,30 +469,6 @@ dd {
 .chip__count {
   font-size: 0.72rem;
   opacity: 0.7;
-}
-
-.select-wrap {
-  position: relative;
-  flex: 0 0 auto;
-}
-
-.select {
-  min-height: 2.1rem;
-  max-width: 8.5rem;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.82rem;
-  color: var(--ink-2);
-  background: var(--paper-2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-}
-
-/* Inside a collection this control sets that collection's own order, not the
-   library preference. It is tinted so the change of ownership is visible. */
-.select.is-scoped {
-  color: var(--ink);
-  background: var(--accent-soft);
-  border-color: transparent;
 }
 
 .summary {
@@ -871,13 +839,18 @@ dd {
 
 .segmented {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
+  /* auto-fit rather than a single row: five shelves at 390px would squeeze
+     "Abandoned" to nothing, so the control wraps instead. The floor is set
+     wide enough to break 3 + 2 rather than orphan the last item on its own,
+     and to keep wrapping gracefully as the reader's text size grows. */
+  grid-template-columns: repeat(auto-fit, minmax(6.6rem, 1fr));
   gap: 0.25rem;
   padding: 0.25rem;
   background: var(--paper-2);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  /* A rounded rectangle rather than a pill: a pill only reads as one while
+     its contents stay on a single line, which five shelves no longer do. */
+  border-radius: var(--radius-lg);
 }
 
 .segmented__item {
@@ -895,6 +868,10 @@ dd {
 .segmented__item.is-on {
   color: #fff;
   background: var(--accent);
+}
+
+.segmented--small {
+  border-radius: 999px;
 }
 
 .segmented--small .segmented__item {
@@ -1652,6 +1629,13 @@ dd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* The chosen order. A tick rather than a filled row: these are one-of-many,
+   and the row highlight already means "this is the filter you are in". */
+.facet-row__tick {
+  flex: 0 0 auto;
+  color: var(--accent);
 }
 
 .facet-row__action {
