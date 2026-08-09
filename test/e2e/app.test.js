@@ -118,6 +118,61 @@ test('liboff app', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await context.close();
   });
 
+  // A sheet on a phone covers nearly the whole screen, so "tap outside it" is
+  // a sliver of backdrop and Escape is a key no phone has. It closes by its
+  // own button, and that button has to stay put however long the book is.
+  await t.test('a sheet closes by its own button, which stays put when it scrolls', async () => {
+    const { context, page } = await openApp(browser, server.origin);
+    await seed(page, [
+      {
+        title: 'Horta em vasos: 30 projetos passo a passo',
+        authors: ['Editora Senac'],
+        shelf: 'read',
+        rating: 4,
+        tags: ['jardinagem', 'horta', 'varanda', 'presente', 'senac'],
+        notes: 'Long enough, with the tags and collections below, to push this sheet past the viewport and make it scroll.',
+      },
+    ]);
+    await page.evaluate(async () => {
+      const store = await import('/src/lib/store.js');
+      for (const name of ['Estudo', 'Jardim', 'Emprestados', 'Releituras']) {
+        await store.createCollection(name);
+      }
+    });
+
+    await page.click('[data-testid=book-card]');
+    await page.waitForSelector('[data-testid=sheet-close]');
+
+    await page.evaluate(() => document.querySelector('.sheet').scrollTo({ top: 99999 }));
+    const geometry = await page.evaluate(() => {
+      const sheet = document.querySelector('.sheet');
+      const button = document.querySelector('[data-testid=sheet-close]').getBoundingClientRect();
+      return {
+        scrolled: sheet.scrollTop,
+        overflows: sheet.scrollHeight > sheet.clientHeight + 8,
+        offsetFromSheetTop: button.top - sheet.getBoundingClientRect().top,
+      };
+    });
+    assert.ok(geometry.overflows, 'the fixture has to actually overflow or this proves nothing');
+    assert.ok(geometry.scrolled > 100, `expected a real scroll, got ${geometry.scrolled}`);
+    // Both bounds matter: a bar that is not sticky scrolls off the top and
+    // lands at a large *negative* offset, which a one-sided check accepts.
+    assert.ok(
+      geometry.offsetFromSheetTop >= 0 && geometry.offsetFromSheetTop < 24,
+      `the button must stay pinned to the top, sat ${geometry.offsetFromSheetTop}px from it`,
+    );
+
+    await page.click('[data-testid=sheet-close]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+
+    // The filter sheet closes the same way, from the same control.
+    await page.click('[data-testid=open-filters]');
+    await page.waitForSelector('[data-testid=sheet-close]');
+    await page.click('[data-testid=sheet-close]');
+    await page.waitForSelector('.sheet', { state: 'detached' });
+    await context.close();
+  });
+
   await t.test('moving a book to Read records a finish date and updates the shelf counts', async () => {
     const { context, page } = await openApp(browser, server.origin);
     await seed(page, [{ title: 'Piranesi', authors: ['Susanna Clarke'], shelf: 'reading' }]);

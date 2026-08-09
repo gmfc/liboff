@@ -88,7 +88,21 @@ export function showFilterSheet() {
   const dialog = h(
     'div',
     { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Filter', tabindex: '-1' },
-    h('div', { class: 'sheet__grip', 'aria-hidden': 'true' }),
+    h(
+      'div',
+      { class: 'sheet__bar' },
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'sheet__close',
+          'aria-label': 'Close',
+          dataset: { testid: 'sheet-close' },
+          onClick: () => close(),
+        },
+        icon('close', { size: 20 }),
+      ),
+    ),
     content,
   );
 
