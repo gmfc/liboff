@@ -1,9 +1,9 @@
 /*
  * liboff — mobile-first stylesheet.
  *
- * Layout is one viewport-tall column — app bar, offline banner, scrolling
- * outlet, tab bar — so the bar sits on the bottom edge by construction rather
- * than by being positioned there. Everything is sized in rem against a 16px
+ * Layout is a column pinned to the viewport — app bar, offline banner,
+ * scrolling outlet, tab bar — with the outlet the only part that scrolls, so
+ * the tab bar is simply its last row. Everything is sized in rem against a 16px
  * root so it scales with the reader's own text-size setting, and every
  * interactive target is at least 44px.
  */
@@ -498,6 +498,27 @@ dd {
 .chip__count {
   font-size: 0.72rem;
   opacity: 0.7;
+}
+
+/* Measurements, meant to be read rather than admired. Monospaced so the
+   columns line up, and scrollable rather than wrapped so a long line does not
+   become two and stop lining up. */
+.report {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  overflow-x: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--ink-2);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.setting__desc--warn {
+  color: var(--danger);
+  font-weight: 600;
 }
 
 .summary {

@@ -13,6 +13,7 @@ import { isPersistent, requestPersistence, storageEstimate } from '../lib/db.js'
 import * as store from '../lib/store.js';
 import { getInstallPrompt, isStandalone } from '../install.js';
 import { checkNow, isSupported } from '../update.js';
+import { formatViewportReport, shellGap, viewportReport } from '../lib/viewport.js';
 
 function download(filename, text, type) {
   const blob = new Blob([text], { type });
@@ -84,6 +85,51 @@ export function renderSettings(container) {
       }
     },
   });
+
+  /**
+   * The measurements, and the one line that says whether anything is wrong:
+   * a non-zero gap is a strip of nothing between the app and the bottom of
+   * the viewport.
+   */
+  function screenReport() {
+    const report = viewportReport();
+    const gap = shellGap(report);
+    const text = formatViewportReport(report);
+    return h(
+      'div',
+      { class: 'form-stack' },
+      h(
+        'p',
+        {
+          class: ['setting__desc', gap ? 'setting__desc--warn' : ''],
+          dataset: { testid: 'screen-verdict' },
+        },
+        gap === null
+          ? 'Could not measure the app shell.'
+          : gap === 0
+            ? 'The app reaches the bottom of the viewport.'
+            : `The app stops ${gap}px short of the bottom of the viewport.`,
+      ),
+      h('pre', { class: 'report', dataset: { testid: 'screen-report' } }, text),
+      h(
+        'button',
+        {
+          type: 'button',
+          class: 'btn btn--ghost',
+          dataset: { testid: 'copy-report' },
+          onClick: async () => {
+            try {
+              await navigator.clipboard.writeText(text);
+              toast('Copied');
+            } catch {
+              toast('Could not copy — select the text instead.', { kind: 'warn' });
+            }
+          },
+        },
+        'Copy',
+      ),
+    );
+  }
 
   function render() {
     const installPrompt = getInstallPrompt();
@@ -316,6 +362,18 @@ export function renderSettings(container) {
             toast(event.target.value.trim() ? 'Key saved — lookups will use it.' : 'Key removed.');
           },
         }),
+      ),
+
+      h(
+        'section',
+        { class: 'section' },
+        h('h2', { class: 'section__title' }, 'Screen'),
+        h(
+          'p',
+          { class: 'section__hint' },
+          'What this browser reports about the screen. A phone has several rectangles that all answer to "the viewport" and do not agree; when the layout looks wrong at an edge, this is the difference between fixing it and guessing at it.',
+        ),
+        screenReport(),
       ),
 
       h(

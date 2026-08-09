@@ -50,6 +50,7 @@ const SHELL_ASSETS = [
   'src/lib/store.js',
   'src/lib/tags.js',
   'src/lib/transfer.js',
+  'src/lib/viewport.js',
   'src/scanner/camera.js',
   'src/scanner/decode.js',
   'src/ui/book-card.js',

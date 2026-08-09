@@ -170,6 +170,42 @@ test('liboff app', { skip: playwright ? false : SKIP_REASON }, async (t) => {
     await context.close();
   });
 
+  /**
+   * The measurements in More are the answer to a question two attempts at
+   * this layout could not settle by reasoning: which of a phone's several
+   * viewports a length actually resolves to. They have to be real readings,
+   * so this checks them against the browser's own numbers rather than just
+   * asserting that some text appeared.
+   */
+  await t.test('the screen report measures the real thing', async () => {
+    const { context, page } = await openApp(browser, server.origin);
+    await goToTab(page, 'more');
+    await page.waitForSelector('[data-testid=screen-report]');
+
+    const text = await page.textContent('[data-testid=screen-report]');
+    const truth = await page.evaluate(() => ({
+      height: window.innerHeight,
+      width: window.innerWidth,
+      shellBottom: Math.round(document.querySelector('#app').getBoundingClientRect().bottom),
+    }));
+
+    assert.match(text, new RegExp(`layout\\s+${truth.width}×${truth.height}`));
+    assert.match(text, /insets\s+top \d+\s+right \d+\s+bottom \d+\s+left \d+/);
+    assert.match(text, new RegExp(`gap\\s+${truth.height - truth.shellBottom}\\b`));
+    assert.match(
+      await page.textContent('[data-testid=screen-verdict]'),
+      /reaches the bottom of the viewport/,
+      'and this browser has no strip under the app to report',
+    );
+
+    // The probe must not survive its own measurement.
+    const leftovers = await page.evaluate(
+      () => [...document.body.children].filter((n) => n.style?.paddingTop?.includes('env(')).length,
+    );
+    assert.equal(leftovers, 0, 'the inset probe cleans up after itself');
+    await context.close();
+  });
+
   await t.test('rates a book with stars, then bombs it, from the detail sheet', async () => {
     const { context, page } = await openApp(browser, server.origin);
     await seed(page, [{ title: 'Piranesi', authors: ['Susanna Clarke'], shelf: 'reading' }]);
