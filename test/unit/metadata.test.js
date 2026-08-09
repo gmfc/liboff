@@ -183,6 +183,98 @@ test('Crossref is asked only after both trade catalogues have answered and misse
   assert.equal(calls.filter((url) => url.includes('crossref')).length, 1);
 });
 
+/* ------------------------------------------------------------------- Brazil */
+
+const BR_ISBN = '9786555666779';
+
+const cblHit = (extra = {}) => ({
+  isbn: BR_ISBN,
+  title: 'John Locke, Adam Smith e o Liberalismo',
+  subtitle: null,
+  authors: ['Cultural Livros'],
+  publisher: 'Cultural Livros e Editora',
+  year: 2026,
+  page_count: 144,
+  cover_url: null,
+  provider: 'cbl',
+  ...extra,
+});
+
+test('a Brazilian ISBN is put to the Brazilian agency, and is credited to it', async () => {
+  const calls = stubFetch([
+    ['brasilapi.com.br', cblHit()],
+    ['openlibrary.org', {}],
+    ['googleapis.com', { totalItems: 0 }],
+  ]);
+  const { status, book, sources } = await lookupIsbn(BR_ISBN);
+  assert.equal(status, FOUND);
+  assert.equal(book.title, 'John Locke, Adam Smith e o Liberalismo');
+  assert.equal(book.pages, 144);
+  assert.equal(book.year, 2026);
+  assert.deepEqual(sources, ['CBL'], 'named for the agency, not the service carrying it');
+  assert.ok(
+    calls.some((url) => url.includes('providers=cbl,mercado-editorial')),
+    'and the catalogues this app asks itself are excluded from the provider list',
+  );
+});
+
+test('a book from anywhere else is not put to the Brazilian agency at all', async () => {
+  const calls = stubFetch([
+    ['openlibrary.org', openLibraryHit(ISBN13)],
+    ['googleapis.com', { totalItems: 0 }],
+  ]);
+  await lookupIsbn(ISBN13);
+  assert.equal(
+    calls.filter((url) => url.includes('brasilapi')).length,
+    0,
+    'the endpoint rejects non-Brazilian numbers, so asking could only fail',
+  );
+});
+
+test('the agency that registered the number leads the merge for it', async () => {
+  stubFetch([
+    ['brasilapi.com.br', cblHit({ page_count: null })],
+    // Open Library holds an older, thinner record for the same book.
+    ['openlibrary.org', { [`ISBN:${BR_ISBN}`]: { title: 'Locke e Smith', number_of_pages: 144 } }],
+    ['googleapis.com', { totalItems: 0 }],
+  ]);
+  const { book, sources } = await lookupIsbn(BR_ISBN);
+  assert.equal(book.title, 'John Locke, Adam Smith e o Liberalismo', 'CBL leads');
+  assert.equal(book.pages, 144, 'but still yields where it is blank');
+  assert.deepEqual(sources, ['CBL', 'Open Library']);
+});
+
+test('a subtitle from the agency joins the title, as it does everywhere else', async () => {
+  stubFetch([
+    ['brasilapi.com.br', cblHit({ title: 'Dom Casmurro', subtitle: 'edição comentada' })],
+    ['openlibrary.org', {}],
+    ['googleapis.com', { totalItems: 0 }],
+  ]);
+  const { book } = await lookupIsbn(BR_ISBN);
+  assert.equal(book.title, 'Dom Casmurro: edição comentada');
+});
+
+test('Mercado Editorial is named as itself when it is the one that answered', async () => {
+  stubFetch([
+    ['brasilapi.com.br', cblHit({ provider: 'mercado-editorial' })],
+    ['openlibrary.org', {}],
+    ['googleapis.com', { totalItems: 0 }],
+  ]);
+  assert.deepEqual((await lookupIsbn(BR_ISBN)).sources, ['Mercado Editorial']);
+});
+
+test('an ISBN the agency has never registered is a clean miss, not a failure', async () => {
+  stubFetch([
+    ['brasilapi.com.br', errorResponse(404)],
+    ['openlibrary.org', {}],
+    ['googleapis.com', { totalItems: 0 }],
+    ['api.crossref.org', { message: { items: [] } }],
+  ]);
+  const outcome = await lookupIsbn(BR_ISBN);
+  assert.equal(outcome.status, NOT_FOUND);
+  assert.equal(outcome.partial, false, 'every catalogue gave a straight answer');
+});
+
 test('Crossref is still asked when another catalogue fell over', async () => {
   // Google's shared keyless quota is spent most of the time. Gating the last
   // resort on a clean sweep meant it was almost never reached.

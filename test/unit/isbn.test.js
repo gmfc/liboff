@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   cleanIsbn,
   formatIsbn,
+  isBrazilianIsbn,
   isbn10To13,
   isbn13To10,
   isbnFromBarcode,
@@ -63,6 +64,16 @@ test('a 979 ISBN has no ISBN-10 form, and is not given a made-up one', () => {
     null,
     '979 was minted after the changeover; there is nothing to narrow to',
   );
+});
+
+test('Brazil holds two registration groups, and both are recognised', () => {
+  assert.ok(isBrazilianIsbn('9788535914849'), '978-85, the original group');
+  assert.ok(isBrazilianIsbn('9786555666779'), '978-65, opened when 85 filled up');
+  assert.ok(isBrazilianIsbn('978-65-5532-108-1'), 'punctuation is no obstacle');
+  assert.ok(!isBrazilianIsbn('9780140328721'), '978-0 is English-language');
+  assert.ok(!isBrazilianIsbn('9783442267743'), '978-3 is German-language');
+  assert.ok(!isBrazilianIsbn('0140328726'), 'the group lives in the ISBN-13 form');
+  assert.ok(!isBrazilianIsbn('9788535914840'), 'a bad check digit is not an ISBN at all');
 });
 
 test('the two widths round-trip', () => {

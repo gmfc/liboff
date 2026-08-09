@@ -128,7 +128,27 @@ their answers are *combined* — Open Library describes the edition in your
 hands, Google usually knows how many pages it has, and taking whichever
 replied first threw the other away on every lookup. Crossref is asked only
 when both miss, since it indexes scholarly books the trade catalogues do not
-carry. None of them needs a key.
+carry. A Brazilian ISBN is also put to the Brazilian agency — CBL and Mercado
+Editorial, through [BrasilAPI](https://brasilapi.com.br) — which leads the
+merge for its own numbers, having registered them. None of them needs a key.
+
+The national agency earns its place on measurement rather than principle. Over
+six Brazilian ISBNs, Open Library held one and CBL held five, **four of which
+no other reachable catalogue had at all**. Only Brazilian numbers are sent
+there: the endpoint rejects the rest, so asking would be a request that could
+only fail, made against somebody's free service.
+
+Other catalogues were tried and left out for reasons worth recording, since
+"add another source" sounds free and is not. The Deutsche Nationalbibliothek
+answers with CORS and no key, but every book it found here was one Open
+Library already had — zero unique hits over the same sample, and K10plus
+returned nothing at all. Harvard's LibraryCloud sends no CORS header, and
+neither does PORBASE. Mercado Livre's API now needs an OAuth token. The
+Internet Archive answers, but an `isbn:` search there returns scanning-batch
+records rather than books. **Amazon and Kindle are not possible at all**: the
+Product Advertising API needs signed credentials and a sales-qualified
+associate account, product pages send no CORS header, and a static page with
+no server of its own cannot work around either.
 
 Three details do most of the work:
 
@@ -230,5 +250,8 @@ sits alongside it, and [NOTICE](NOTICE) records how to replace it. CI checks
 the vendored files still match upstream byte for byte.
 
 Book metadata and cover art come from
-[Open Library](https://openlibrary.org/developers/api) and
-[Google Books](https://developers.google.com/books).
+[Open Library](https://openlibrary.org/developers/api),
+[Google Books](https://developers.google.com/books),
+[Crossref](https://www.crossref.org/documentation/retrieve-metadata/rest-api/)
+and, for Brazilian ISBNs, [BrasilAPI](https://brasilapi.com.br) carrying data
+from CBL and Mercado Editorial.
